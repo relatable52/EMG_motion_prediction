@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
@@ -67,4 +69,4 @@ if __name__ == "__main__":
     plt.title('Sample EMG Features and Target Angle')
     plt.xlabel('Feature Index')
     plt.ylabel('Value')
-    plt.savefig('test_sample_plot.png')
+    plt.savefig(os.path.join(os.getenv('RESULTS_DIR'), 'sample_plot.png'))
