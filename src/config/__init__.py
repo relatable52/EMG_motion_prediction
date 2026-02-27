@@ -1,4 +1,4 @@
 from config.load_config import load_config
 
 # Load configuration parameters
-CONFIG = load_config('config/config.jsonc')
+CONFIG = load_config('config/config.json')
