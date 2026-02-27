@@ -1,5 +1,4 @@
 {
-    // Configuration file for the dataset and model parameters
     "TARGET_ANGLE_NAME": [
         "knee_angle_r",
         "knee_angle_l"
