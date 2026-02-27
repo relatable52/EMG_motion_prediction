@@ -35,8 +35,8 @@ def _get_data_files() -> dict:
 
     for subject in SUBJECTS:
         for activity in ACTIVITIES:
-            emg_file = os.path.join(DATA_DIR, subject, f'{subject}_{activity}_emg.csv')
-            angle_file = os.path.join(DATA_DIR, subject, f'{subject}_{activity}_angle.csv')
+            emg_file = os.path.join(DATA_DIR, subject, activity, f'{subject}_{activity}_emg.csv')
+            angle_file = os.path.join(DATA_DIR, subject, activity, f'{subject}_{activity}_angle.csv')
 
             if os.path.exists(emg_file) and os.path.exists(angle_file):
                 files.append({
