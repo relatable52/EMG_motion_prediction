@@ -44,7 +44,7 @@ class PredictionDataset(Dataset):
             for i in range(0, len(df) - int((self.prediction_horizon + self.window_length) * EMG_FREQUENCY), int(self.stride * EMG_FREQUENCY)):
                 features = df.iloc[i:i + int(self.window_length * EMG_FREQUENCY)].drop('time', axis=1).values.astype(np.float32)
                 label = df.iloc[i + int((self.prediction_horizon + self.window_length) * EMG_FREQUENCY)][TARGET_ANGLE_NAME].values.astype(np.float32)
-                samples.append(features.flatten())
+                samples.append(features.T)
                 labels.append(label)
         return samples, labels
 
@@ -63,8 +63,9 @@ if __name__ == "__main__":
     print("Sample label shape:", sample_label.shape)
     # Plot the first 10 features and the corresponding label
     plt.figure(figsize=(12, 6))
-    plt.plot(sample_data[:10], label='EMG Features')
-    plt.plot(sample_label, label='Target Angle', marker='o')
+    plt.plot(sample_data[0, :], label='EMG Channel 0')
+    plt.plot(sample_data[1, :], label='EMG Channel 1')
+
     plt.legend()
     plt.title('Sample EMG Features and Target Angle')
     plt.xlabel('Feature Index')
