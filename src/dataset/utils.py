@@ -1,6 +1,6 @@
 import os
 
-import dotenv
+from dotenv import load_dotenv
 import pandas as pd
 import numpy as np
 from scipy.signal import butter, filtfilt
@@ -9,10 +9,12 @@ from tqdm import tqdm
 
 from utils.logger import logger
 
-DATA_DIR = dotenv.get('DATA_DIR')
-TARGET_ANGLE_NAME = [name.strip() for name in dotenv.get('TARGET_ANGLE_NAME', 'knee_angle_r, knee_angle_l').split(',')]
-EMG_FREQUENCY = int(dotenv.get('EMG_FREQUENCY', 1000))
-ANGLE_FREQUENCY = int(dotenv.get('ANGLE_FREQUENCY', 100))
+load_dotenv()
+
+DATA_DIR = os.getenv('DATA_DIR')
+TARGET_ANGLE_NAME = [name.strip() for name in os.getenv('TARGET_ANGLE_NAME', 'knee_angle_r, knee_angle_l').split(',')]
+EMG_FREQUENCY = int(os.getenv('EMG_FREQUENCY', 1000))
+ANGLE_FREQUENCY = int(os.getenv('ANGLE_FREQUENCY', 100))
 
 ACTIVITIES = [
     'normal_walk_1_0-6',

@@ -2,7 +2,9 @@ import logging
 import os
 import datetime
 
-import dotenv
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def setup_logger(log_file: str) -> logging.Logger:
     """
@@ -36,7 +38,7 @@ def setup_logger(log_file: str) -> logging.Logger:
 
 # Create a unique log file name based on the current date and time
 log_file_name = f"project_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
-log_file_path = os.path.join(dotenv.get('LOG_DIR'), log_file_name)
+log_file_path = os.path.join(os.getenv('LOG_DIR'), log_file_name)
 
 # Set up a logger instance for the project and specify the log file path
 logger = setup_logger(log_file_path)
