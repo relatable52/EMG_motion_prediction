@@ -67,4 +67,4 @@ if __name__ == "__main__":
     plt.title('Sample EMG Features and Target Angle')
     plt.xlabel('Feature Index')
     plt.ylabel('Value')
-    plt.show()
+    plt.savefig('test_sample_plot.png')
