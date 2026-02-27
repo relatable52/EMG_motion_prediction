@@ -1,9 +1,12 @@
 import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
+from dotenv import load_dotenv
 
 from dataset.utils import load_and_process_data, EMG_FREQUENCY
 from config import CONFIG
+
+load_dotenv()
 
 TARGET_ANGLE_NAME = CONFIG['TARGET_ANGLE_NAME']
 
