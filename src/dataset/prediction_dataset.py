@@ -69,4 +69,6 @@ if __name__ == "__main__":
     plt.title('Sample EMG Features and Target Angle')
     plt.xlabel('Feature Index')
     plt.ylabel('Value')
-    plt.savefig(os.path.join(os.getenv('RESULTS_DIR'), 'sample_plot.png'))
+    save_path = os.path.join(os.getenv('RESULTS_DIR'), 'sample_plot.png')
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    plt.savefig(save_path)
