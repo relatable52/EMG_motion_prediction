@@ -144,30 +144,38 @@ def _calculate_features(channel_data):
 def _combine_emg_angle_data(emg_df, angle_df):
     """
     Interpolate the angle data to match the time stamps of the EMG features and combine them into a single dataframe.
+    Also reuturn list of angle and EMG feature names for later use in model training and evaluation.
     Args:
             emg_df (pd.DataFrame): Dataframe containing the EMG features with a 'time' column.
             angle_df (pd.DataFrame): Dataframe containing the angle data with a 'time' column.
     Returns:
         pd.DataFrame: A combined dataframe with EMG features and corresponding angle data.
+        emg_columns (list): List of EMG feature column names.
+        angle_columns (list): List of angle column names.
     """
     # Interpolate angle data to match EMG time stamps
     angle_columns = [col for col in angle_df.columns if not col.startswith('time')]
+    emg_columns = [col for col in emg_df.columns if col != 'time']
     interpolated_angles = {}
     for col in angle_columns:
-        interpolated_angles[col] = np.interp(emg_df['time'], angle_df['time'], angle_df[col])
+        interpolated_angles[col] = np.interp(emg_df['time'], angle_df['time'], angle_df[col])/90 # Normalize angles to [-1, 1] range
 
     # Combine EMG features and interpolated angles
-    combined_df = emg_df.copy()
+    combined_df = pd.DataFrame(columns=['time'] + emg_columns + angle_columns)
     for col in angle_columns:
         combined_df[col] = interpolated_angles[col]
+    for col in emg_columns:
+        combined_df[col] = emg_df[col]
 
-    return combined_df
+    return combined_df, emg_columns, angle_columns
 
 def load_and_process_data(mode='train'):
     """
     Load and process the EMG and angle data for all subjects and activities, return a list of dataframes containing the combined data for each subject and activity.
     Returns:
         list: A list of dataframes containing EMG features and corresponding angle data for each subject and activity.
+        emg_columns (list): List of EMG feature column names.
+        angle_columns (list): List of angle column names.
     """
     combined_data = []
     data_files = TRAIN_FILES if mode == 'train' else TEST_FILES
@@ -175,7 +183,7 @@ def load_and_process_data(mode='train'):
         loop.set_description(f"Processing {file_info['subject']} - {file_info['activity']}")
         emg_df = _process_emg_file(file_info['emg_file'])
         angle_df = pd.read_csv(file_info['angle_file'])
-        combined_df = _combine_emg_angle_data(emg_df, angle_df)
+        combined_df, emg_columns, angle_columns = _combine_emg_angle_data(emg_df, angle_df)
         combined_data.append(combined_df)
 
-    return combined_data
+    return combined_data, emg_columns, angle_columns

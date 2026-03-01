@@ -30,7 +30,7 @@ class PredictionDataset(Dataset):
         self.window_length = window_length
         self.stride = stride
         self.prediction_horizon = prediction_horizon
-        self.dataframes = load_and_process_data(mode=mode)
+        self.dataframes, self.emg_columns, self.angle_columns = load_and_process_data(mode=mode)
         self.data, self.labels = self._generate_samples()
 
     def _generate_samples(self):
@@ -68,7 +68,7 @@ if __name__ == "__main__":
 
     plt.legend()
     plt.title('Sample EMG Features and Target Angle')
-    plt.xlabel('Feature Index')
+    plt.xlabel('Time Steps')
     plt.ylabel('Value')
     save_path = os.path.join(os.getenv('RESULTS_DIR'), 'sample_plot.png')
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
