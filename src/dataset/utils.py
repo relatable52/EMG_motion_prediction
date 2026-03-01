@@ -183,8 +183,10 @@ def load_and_process_data(mode='train'):
     for file_info in (loop := tqdm(data_files)):
         loop.set_description(f"Processing {file_info['subject']} - {file_info['activity']}")
         emg_df = _process_emg_file(file_info['emg_file'])
+        logger.info(f"Processed EMG data from {file_info['emg_file']} with columns {emg_df.columns.tolist()}")
         angle_df = pd.read_csv(file_info['angle_file'])
         combined_df, emg_columns, angle_columns = _combine_emg_angle_data(emg_df, angle_df)
+        logger.info(f"Combined data has columns {combined_df.columns.tolist()} and shape {combined_df.shape}")
         combined_data.append(combined_df)
 
     return combined_data, emg_columns, angle_columns
