@@ -65,6 +65,7 @@ def _process_emg_file(emg_file, window_length: float = 0.1):
     """
     # Load the EMG data
     df = pd.read_csv(emg_file)
+    logger.info(f"Loaded EMG data from {emg_file} with shape {df.shape}")
     time_stamps = df['time'].values
 
     muscle_columns = [col for col in df.columns if col.startswith('muscle')]
