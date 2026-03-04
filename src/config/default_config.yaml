@@ -1,0 +1,62 @@
+# Default Configuration for Gait Analysis Prediction Model
+# This file contains all hyperparameters for training and testing
+
+# ============================================================================
+# Experiment Metadata
+# ============================================================================
+experiment_name: "default_experiment"  # Name for organizing results
+seed: 42  # Random seed for reproducibility
+device: "cuda"  # Device: "cuda" or "cpu"
+
+# ============================================================================
+# Target Configuration
+# ============================================================================
+target_angle_name:
+  - knee_angle_r
+  - knee_angle_l
+# Available targets: knee_angle_r, knee_angle_l, ankle_angle_r, ankle_angle_l, hip_angle_r, hip_angle_l
+
+# ============================================================================
+# Data Processing Parameters
+# ============================================================================
+use_cache: true  # Use cached processed data to speed up data loading
+sample_window_length: 1.0  # Length of input window in seconds
+prediction_horizon: 0.5  # How far ahead to predict in seconds
+sample_stride: 0.1  # Stride between consecutive windows in seconds
+
+# ============================================================================
+# Training Hyperparameters
+# ============================================================================
+batch_size: 64  # Number of samples per batch
+learning_rate: 0.00001  # Learning rate for optimizer
+epochs: 10  # Number of training epochs
+early_stopping_patience: 10  # Stop if no improvement for N epochs (0 = disabled)
+
+# ============================================================================
+# Model Architecture
+# ============================================================================
+backbone: "LSTM"  # Backbone type: "LSTM" or "TCN"
+prediction_type: "deterministic"  # "deterministic" or "probabilistic"
+
+# Model-specific hyperparameters
+model_spec:
+  hidden_size: 128  # Hidden dimension size
+  num_layers: 2  # Number of layers (for LSTM)
+  kernel_size: 3  # Kernel size (for TCN)
+  dropout: 0.2  # Dropout rate
+
+# ============================================================================
+# Feature Configuration
+# ============================================================================
+features_used: "all"  # Feature selection: "all", "emg_only", "angle_only"
+
+# ============================================================================
+# Logging
+# ============================================================================
+log_interval: 1  # Log metrics every N epochs (1 = every epoch, 5 = every 5 epochs)
+
+# ============================================================================
+# Model Saving
+# ============================================================================
+save_best_model: true  # Save best model based on validation loss
+save_last_model: true  # Save final model state after training completes

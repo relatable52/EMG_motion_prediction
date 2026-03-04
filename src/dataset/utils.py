@@ -1,4 +1,7 @@
 import os
+import pickle
+import hashlib
+from pathlib import Path
 
 from dotenv import load_dotenv
 import pandas as pd
@@ -12,7 +15,7 @@ from utils.logger import logger
 load_dotenv()
 
 DATA_DIR = os.getenv('DATA_DIR')
-TARGET_ANGLE_NAME = [name.strip() for name in os.getenv('TARGET_ANGLE_NAME', 'knee_angle_r, knee_angle_l').split(',')]
+CACHE_DIR = os.getenv('CACHE_DIR', './cache')
 EMG_FREQUENCY = int(os.getenv('EMG_FREQUENCY', 1000))
 ANGLE_FREQUENCY = int(os.getenv('ANGLE_FREQUENCY', 100))
 
@@ -161,29 +164,200 @@ def _combine_emg_angle_data(emg_df, angle_df):
         interpolated_angles[col] = np.interp(emg_df['time'], angle_df['time'], angle_df[col])/90 # Normalize angles to [-1, 1] range
 
     # Combine EMG features and interpolated angles
-    combined_df = pd.DataFrame(columns=['time'] + emg_columns + angle_columns)
+    combined_df = emg_df.copy()
     for col in angle_columns:
         combined_df[col] = interpolated_angles[col]
-    for col in emg_columns:
-        combined_df[col] = emg_df[col]
 
     return combined_df, emg_columns, angle_columns
 
-def load_and_process_data(mode='train'):
+
+def _get_cache_key(mode: str, data_files: list) -> str:
     """
-    Load and process the EMG and angle data for all subjects and activities, return a list of dataframes containing the combined data for each subject and activity.
+    Generate a unique cache key based on mode and data files.
+    
+    Args:
+        mode (str): 'train' or 'test' mode.
+        data_files (list): List of data file dictionaries.
+    
+    Returns:
+        str: MD5 hash as cache key.
+    """
+    # Create a string representation of the file paths and mode
+    file_paths = sorted([f"{f['emg_file']}|{f['angle_file']}" for f in data_files])
+    cache_str = f"{mode}|{'|'.join(file_paths)}"
+    
+    # Generate MD5 hash
+    cache_hash = hashlib.md5(cache_str.encode()).hexdigest()
+    return cache_hash
+
+
+def _get_cache_path(mode: str, data_files: list) -> Path:
+    """
+    Get the cache file path for the given mode and data files.
+    
+    Args:
+        mode (str): 'train' or 'test' mode.
+        data_files (list): List of data file dictionaries.
+    
+    Returns:
+        Path: Path to the cache file.
+    """
+    cache_key = _get_cache_key(mode, data_files)
+    cache_dir = Path(CACHE_DIR)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir / f"processed_data_{mode}_{cache_key}.pkl"
+
+
+def _save_to_cache(cache_path: Path, combined_data: list, emg_columns: list, angle_columns: list):
+    """
+    Save processed data to cache file.
+    
+    Args:
+        cache_path (Path): Path to cache file.
+        combined_data (list): List of processed dataframes.
+        emg_columns (list): List of EMG column names.
+        angle_columns (list): List of angle column names.
+    """
+    cache_data = {
+        'combined_data': combined_data,
+        'emg_columns': emg_columns,
+        'angle_columns': angle_columns,
+        'version': '1.0'  # Cache version for future compatibility
+    }
+    
+    with open(cache_path, 'wb') as f:
+        pickle.dump(cache_data, f, protocol=pickle.HIGHEST_PROTOCOL)
+    
+    logger.info(f"✓ Cached processed data to: {cache_path}")
+
+
+def _load_from_cache(cache_path: Path):
+    """
+    Load processed data from cache file.
+    
+    Args:
+        cache_path (Path): Path to cache file.
+    
+    Returns:
+        tuple: (combined_data, emg_columns, angle_columns) or None if cache invalid.
+    """
+    try:
+        with open(cache_path, 'rb') as f:
+            cache_data = pickle.load(f)
+        
+        # Validate cache structure
+        if not isinstance(cache_data, dict):
+            logger.warning("Invalid cache format (not a dict)")
+            return None
+        
+        required_keys = ['combined_data', 'emg_columns', 'angle_columns']
+        if not all(key in cache_data for key in required_keys):
+            logger.warning("Invalid cache format (missing keys)")
+            return None
+        
+        return cache_data['combined_data'], cache_data['emg_columns'], cache_data['angle_columns']
+    
+    except (pickle.UnpicklingError, EOFError, ImportError) as e:
+        logger.warning(f"Failed to load cache: {e}")
+        return None
+    except Exception as e:
+        logger.warning(f"Unexpected error loading cache: {e}")
+        return None
+
+
+def load_and_process_data(mode='train', use_cache=True):
+    """
+    Load and process the EMG and angle data for all subjects and activities.
+    Uses caching to avoid reprocessing on subsequent runs.
+    
+    Args:
+        mode (str): 'train' or 'test' to specify which data split to use.
+        use_cache (bool): Whether to use cached data if available. Default True.
+    
     Returns:
         list: A list of dataframes containing EMG features and corresponding angle data for each subject and activity.
         emg_columns (list): List of EMG feature column names.
         angle_columns (list): List of angle column names.
     """
-    combined_data = []
     data_files = TRAIN_FILES if mode == 'train' else TEST_FILES
-    for file_info in (loop := tqdm(data_files)):
+    
+    # Try to load from cache
+    if use_cache:
+        cache_path = _get_cache_path(mode, data_files)
+        
+        if cache_path.exists():
+            logger.info(f"Loading processed data from cache: {cache_path.name}")
+            cached_result = _load_from_cache(cache_path)
+            
+            if cached_result is not None:
+                logger.info(f"✓ Successfully loaded {len(cached_result[0])} files from cache")
+                return cached_result
+            else:
+                logger.info("Cache invalid, reprocessing data...")
+        else:
+            logger.info(f"No cache found, processing data from scratch...")
+    
+    # Process data from scratch
+    combined_data = []
+    emg_columns = None
+    angle_columns = None
+
+    for file_info in (loop := tqdm(data_files, desc="Processing data")):
         loop.set_description(f"Processing {file_info['subject']} - {file_info['activity']}")
         emg_df = _process_emg_file(file_info['emg_file'])
         angle_df = pd.read_csv(file_info['angle_file'])
         combined_df, emg_columns, angle_columns = _combine_emg_angle_data(emg_df, angle_df)
         combined_data.append(combined_df)
+    
+    # Save to cache
+    if use_cache:
+        cache_path = _get_cache_path(mode, data_files)
+        _save_to_cache(cache_path, combined_data, emg_columns, angle_columns)
 
     return combined_data, emg_columns, angle_columns
+
+
+def clear_cache(mode: str = None):
+    """
+    Clear cached processed data files.
+    
+    Args:
+        mode (str, optional): 'train' or 'test' to clear specific mode cache.
+                             If None, clears all cache files.
+    """
+    cache_dir = Path(CACHE_DIR)
+    
+    if not cache_dir.exists():
+        logger.info("Cache directory does not exist. Nothing to clear.")
+        return
+    
+    if mode is not None:
+        # Clear specific mode cache
+        pattern = f"processed_data_{mode}_*.pkl"
+        cache_files = list(cache_dir.glob(pattern))
+    else:
+        # Clear all cache files
+        cache_files = list(cache_dir.glob("processed_data_*.pkl"))
+    
+    if not cache_files:
+        logger.info(f"No cache files found to clear{f' for mode: {mode}' if mode else ''}.")
+        return
+    
+    for cache_file in cache_files:
+        try:
+            cache_file.unlink()
+            logger.info(f"✓ Deleted cache file: {cache_file.name}")
+        except Exception as e:
+            logger.warning(f"Failed to delete {cache_file.name}: {e}")
+    
+    logger.info(f"✓ Cleared {len(cache_files)} cache file(s).")
+
+
+if __name__ == "__main__":
+    # Example: Clear all cache
+    # clear_cache()
+    
+    # Example: Clear only train cache
+    # clear_cache(mode='train')
+    
+    pass
