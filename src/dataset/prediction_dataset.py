@@ -17,7 +17,7 @@ class PredictionDataset(Dataset):
     """
     def __init__(self, mode='train', window_length: float=1, stride: float=0.1, 
                  prediction_horizon: float=0.2, target_angle_name: list=['knee_angle_r', 'knee_angle_l'],
-                 use_cache: bool=True):
+                 use_cache: bool=True, cache_dir: str=None):
         """
         Initialize the PredictionDataset.
         Args:
@@ -27,12 +27,13 @@ class PredictionDataset(Dataset):
             prediction_horizon (float): The time horizon (in seconds) into the future for which to predict the angle.
             target_angle_name (list): List of angle names to predict (e.g., ['knee_angle_r', 'knee_angle_l']).
             use_cache (bool): Whether to use cached processed data. Default True.
+            cache_dir (str, optional): Custom cache directory path. If None, uses CACHE_DIR.
         """
         self.window_length = window_length
         self.stride = stride
         self.prediction_horizon = prediction_horizon
         self.target_angle_name = target_angle_name
-        self.dataframes, self.emg_columns, self.angle_columns = load_and_process_data(mode=mode, use_cache=use_cache)
+        self.dataframes, self.emg_columns, self.angle_columns = load_and_process_data(mode=mode, use_cache=use_cache, cache_dir=cache_dir)
         self.emg_samples, self.angle_samples, self.labels = self._generate_samples()
 
     def _generate_samples(self):

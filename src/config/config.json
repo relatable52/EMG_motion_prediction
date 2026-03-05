@@ -5,5 +5,17 @@
     ],
     "SAMPLE_WINDOW_LENGTH": 1.0,
     "PREDICTION_HORIZON": 0.5,
-    "SAMPLE_STRIDE": 0.1
+    "SAMPLE_STRIDE": 0.1,
+    "BATCH_SIZE": 64,
+    "LEARNING_RATE": 1e-5,
+    "EPOCHS": 10,
+    "FEATURES_USED": "all",
+    "BACKBONE": "LSTM",
+    "PREDICTION_TYPE": "deterministic",
+    "MODEL_SPEC": {
+        "hidden_size": 128,
+        "num_layers": 2,
+        "kernel_size": 3,
+        "dropout": 0.2
+    }
 }

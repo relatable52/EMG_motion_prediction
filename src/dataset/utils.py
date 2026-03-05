@@ -191,21 +191,22 @@ def _get_cache_key(mode: str, data_files: list) -> str:
     return cache_hash
 
 
-def _get_cache_path(mode: str, data_files: list) -> Path:
+def _get_cache_path(mode: str, data_files: list, cache_dir: str = None) -> Path:
     """
     Get the cache file path for the given mode and data files.
     
     Args:
         mode (str): 'train' or 'test' mode.
         data_files (list): List of data file dictionaries.
+        cache_dir (str, optional): Custom cache directory path. If None, uses CACHE_DIR.
     
     Returns:
         Path: Path to the cache file.
     """
     cache_key = _get_cache_key(mode, data_files)
-    cache_dir = Path(CACHE_DIR)
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    return cache_dir / f"processed_data_{mode}_{cache_key}.pkl"
+    cache_path = Path(cache_dir if cache_dir is not None else CACHE_DIR)
+    cache_path.mkdir(parents=True, exist_ok=True)
+    return cache_path / f"processed_data_{mode}_{cache_key}.pkl"
 
 
 def _save_to_cache(cache_path: Path, combined_data: list, emg_columns: list, angle_columns: list):
@@ -265,7 +266,7 @@ def _load_from_cache(cache_path: Path):
         return None
 
 
-def load_and_process_data(mode='train', use_cache=True):
+def load_and_process_data(mode='train', use_cache=True, cache_dir=None):
     """
     Load and process the EMG and angle data for all subjects and activities.
     Uses caching to avoid reprocessing on subsequent runs.
@@ -273,6 +274,7 @@ def load_and_process_data(mode='train', use_cache=True):
     Args:
         mode (str): 'train' or 'test' to specify which data split to use.
         use_cache (bool): Whether to use cached data if available. Default True.
+        cache_dir (str, optional): Custom cache directory path. If None, uses CACHE_DIR.
     
     Returns:
         list: A list of dataframes containing EMG features and corresponding angle data for each subject and activity.
@@ -283,7 +285,7 @@ def load_and_process_data(mode='train', use_cache=True):
     
     # Try to load from cache
     if use_cache:
-        cache_path = _get_cache_path(mode, data_files)
+        cache_path = _get_cache_path(mode, data_files, cache_dir)
         
         if cache_path.exists():
             logger.info(f"Loading processed data from cache: {cache_path.name}")
@@ -311,33 +313,34 @@ def load_and_process_data(mode='train', use_cache=True):
     
     # Save to cache
     if use_cache:
-        cache_path = _get_cache_path(mode, data_files)
+        cache_path = _get_cache_path(mode, data_files, cache_dir)
         _save_to_cache(cache_path, combined_data, emg_columns, angle_columns)
 
     return combined_data, emg_columns, angle_columns
 
 
-def clear_cache(mode: str = None):
+def clear_cache(mode: str = None, cache_dir: str = None):
     """
     Clear cached processed data files.
     
     Args:
         mode (str, optional): 'train' or 'test' to clear specific mode cache.
                              If None, clears all cache files.
+        cache_dir (str, optional): Custom cache directory path. If None, uses CACHE_DIR.
     """
-    cache_dir = Path(CACHE_DIR)
+    cache_path = Path(cache_dir if cache_dir is not None else CACHE_DIR)
     
-    if not cache_dir.exists():
+    if not cache_path.exists():
         logger.info("Cache directory does not exist. Nothing to clear.")
         return
     
     if mode is not None:
         # Clear specific mode cache
         pattern = f"processed_data_{mode}_*.pkl"
-        cache_files = list(cache_dir.glob(pattern))
+        cache_files = list(cache_path.glob(pattern))
     else:
         # Clear all cache files
-        cache_files = list(cache_dir.glob("processed_data_*.pkl"))
+        cache_files = list(cache_path.glob("processed_data_*.pkl"))
     
     if not cache_files:
         logger.info(f"No cache files found to clear{f' for mode: {mode}' if mode else ''}.")

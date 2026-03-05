@@ -20,6 +20,8 @@ def main():
     
     parser.add_argument('--mode', type=str, default=None, choices=['train', 'test'],
                        help='Clear cache for specific mode (train/test). If not specified, clears all cache.')
+    parser.add_argument('--cache-dir', type=str, default=None,
+                       help='Custom cache directory path. If not specified, uses CACHE_DIR from environment.')
     
     args = parser.parse_args()
     
@@ -32,7 +34,10 @@ def main():
     else:
         logger.info("Clearing all cached data...")
     
-    clear_cache(mode=args.mode)
+    if args.cache_dir:
+        logger.info(f"Using custom cache directory: {args.cache_dir}")
+    
+    clear_cache(mode=args.mode, cache_dir=args.cache_dir)
     
     logger.info("=" * 60)
     logger.info("Done!")

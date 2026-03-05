@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 
 from trainer.base import BaseTrainer
