@@ -55,7 +55,7 @@ DATA_FILES = _get_data_files()
 
 TRAIN_FILES, TEST_FILES = train_test_split(DATA_FILES, test_size=0.2, random_state=42)
 
-def _process_emg_file(emg_file, window_length: float = 0.01):
+def _process_emg_file(emg_file, window_length: float = 0.1):
     """
     Process the EMG file to extract features using a sliding window approach.
 
