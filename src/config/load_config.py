@@ -78,7 +78,7 @@ def validate_config(config: Dict[str, Any]) -> None:
         raise ValueError(f"sample_stride must be positive, got {config['sample_stride']}")
     
     # Validate categorical choices
-    valid_backbones = ['LSTM', 'TCN']
+    valid_backbones = ['LSTM', 'TCN', 'DualBackbone']
     if config['backbone'] not in valid_backbones:
         raise ValueError(f"backbone must be one of {valid_backbones}, got {config['backbone']}")
     
