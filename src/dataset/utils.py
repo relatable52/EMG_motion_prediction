@@ -1,6 +1,5 @@
 import os
 import pickle
-import hashlib
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -56,7 +55,7 @@ DATA_FILES = _get_data_files()
 
 TRAIN_FILES, TEST_FILES = train_test_split(DATA_FILES, test_size=0.2, random_state=42)
 
-def _process_emg_file(emg_file, window_length: float = 0.1):
+def _process_emg_file(emg_file, window_length: float = 0.01):
     """
     Process the EMG file to extract features using a sliding window approach.
 
@@ -75,7 +74,7 @@ def _process_emg_file(emg_file, window_length: float = 0.1):
 
     n_channels, n_samples = emg_data.shape
     window_size = int(window_length * EMG_FREQUENCY)
-    n_windows = n_samples - window_size + 1
+    n_windows = n_samples//window_size
 
     # Design a bandpass Butterworth filter
     fs_emg = EMG_FREQUENCY
@@ -96,7 +95,7 @@ def _process_emg_file(emg_file, window_length: float = 0.1):
     # Sliding window feature extraction
     features = []
     for i in range(n_windows):
-        window_data = filtered_emg[:, i:i + window_size]
+        window_data = filtered_emg[:, i*window_size:(i + 1)*window_size]
         start_time = time_stamps[i]
         feature_vector = []
         for channel in window_data:
@@ -171,42 +170,20 @@ def _combine_emg_angle_data(emg_df, angle_df):
     return combined_df, emg_columns, angle_columns
 
 
-def _get_cache_key(mode: str, data_files: list) -> str:
+def _get_cache_path(mode: str, cache_dir: str = None) -> Path:
     """
-    Generate a unique cache key based on mode and data files.
+    Get the cache file path for the given mode.
     
     Args:
         mode (str): 'train' or 'test' mode.
-        data_files (list): List of data file dictionaries.
-    
-    Returns:
-        str: MD5 hash as cache key.
-    """
-    # Create a string representation of the file paths and mode
-    file_paths = sorted([f"{f['emg_file']}|{f['angle_file']}" for f in data_files])
-    cache_str = f"{mode}|{'|'.join(file_paths)}"
-    
-    # Generate MD5 hash
-    cache_hash = hashlib.md5(cache_str.encode()).hexdigest()
-    return cache_hash
-
-
-def _get_cache_path(mode: str, data_files: list, cache_dir: str = None) -> Path:
-    """
-    Get the cache file path for the given mode and data files.
-    
-    Args:
-        mode (str): 'train' or 'test' mode.
-        data_files (list): List of data file dictionaries.
         cache_dir (str, optional): Custom cache directory path. If None, uses CACHE_DIR.
     
     Returns:
         Path: Path to the cache file.
     """
-    cache_key = _get_cache_key(mode, data_files)
     cache_path = Path(cache_dir if cache_dir is not None else CACHE_DIR)
     cache_path.mkdir(parents=True, exist_ok=True)
-    return cache_path / f"processed_data_{mode}_{cache_key}.pkl"
+    return cache_path / f"processed_data_{mode}.pkl"
 
 
 def _save_to_cache(cache_path: Path, combined_data: list, emg_columns: list, angle_columns: list):
@@ -285,7 +262,7 @@ def load_and_process_data(mode='train', use_cache=True, cache_dir=None):
     
     # Try to load from cache
     if use_cache:
-        cache_path = _get_cache_path(mode, data_files, cache_dir)
+        cache_path = _get_cache_path(mode, cache_dir)
         
         if cache_path.exists():
             logger.info(f"Loading processed data from cache: {cache_path.name}")
@@ -313,7 +290,7 @@ def load_and_process_data(mode='train', use_cache=True, cache_dir=None):
     
     # Save to cache
     if use_cache:
-        cache_path = _get_cache_path(mode, data_files, cache_dir)
+        cache_path = _get_cache_path(mode, cache_dir)
         _save_to_cache(cache_path, combined_data, emg_columns, angle_columns)
 
     return combined_data, emg_columns, angle_columns
@@ -336,8 +313,8 @@ def clear_cache(mode: str = None, cache_dir: str = None):
     
     if mode is not None:
         # Clear specific mode cache
-        pattern = f"processed_data_{mode}_*.pkl"
-        cache_files = list(cache_path.glob(pattern))
+        cache_file = cache_path / f"processed_data_{mode}.pkl"
+        cache_files = [cache_file] if cache_file.exists() else []
     else:
         # Clear all cache files
         cache_files = list(cache_path.glob("processed_data_*.pkl"))
