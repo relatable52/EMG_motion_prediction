@@ -8,8 +8,8 @@ class DeterministicModel(nn.Module):
         # Standard regression head mapping to 1 joint angle
         self.fc_out = nn.Linear(backbone.hidden_dim, 1)
 
-    def forward(self, x):
-        features = self.backbone(x)
+    def forward(self, *args, **kwargs):
+        features = self.backbone(*args, **kwargs)
         angle_prediction = self.fc_out(features)
         return angle_prediction
     
@@ -22,8 +22,8 @@ class ProbabilisticModel(nn.Module):
         # Output 2: The uncertainty (Log-Variance)
         self.fc_logvar = nn.Linear(backbone.hidden_dim, 1)
 
-    def forward(self, x):
-        features = self.backbone(x)
+    def forward(self, *args, **kwargs):
+        features = self.backbone(*args, **kwargs)
         pred_mean = self.fc_mean(features)
         pred_logvar = self.fc_logvar(features)
         return pred_mean, pred_logvar

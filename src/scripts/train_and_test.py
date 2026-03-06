@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.load_config import load_config, validate_config, merge_config_with_args
 from dataset.prediction_dataset import PredictionDataset
-from model.backbone import LSTMBackbone, SimpleTCNBackbone
+from model.backbone import EMGScalogramBackbone, AngleHistoryBackbone, DualBackbone
 from model.predictor import DeterministicModel, ProbabilisticModel
 from trainer.specific_trainer import DeterministicTrainer, ProbabilisticTrainer
 from utils.experiment import (
@@ -108,44 +108,85 @@ def set_random_seeds(seed: int):
 
 def build_model(config: dict, input_dim: int):
     """
-    Build the prediction model based on config.
+    Legacy build function - now redirects to dual-backbone.
+    For single-backbone models, use the new DualBackbone architecture.
     
     Args:
         config (dict): Configuration dictionary.
-        input_dim (int): Input feature dimension.
+        input_dim (int): Input feature dimension (not used, kept for compatibility).
     
     Returns:
         nn.Module: The constructed model.
     """
-    # Build backbone
     backbone_type = config['backbone']
-    model_spec = config['model_spec']
+    raise ValueError(
+        f"Legacy backbone type '{backbone_type}' is no longer supported. "
+        f"Please use 'DualBackbone' with the new wavelet-based architecture. "
+        f"See config_dual_backbone.yaml for an example configuration."
+    )
+
+
+def build_dual_backbone_model(config: dict, dataset):
+    """
+    Build dual-backbone model for wavelet EMG + angle data.
     
-    if backbone_type == 'LSTM':
-        backbone = LSTMBackbone(
-            input_dim=input_dim,
-            hidden_dim=model_spec['hidden_size'],
-            num_layers=model_spec['num_layers'],
-            dropout=model_spec.get('dropout', 0.2)
-        )
-    elif backbone_type == 'TCN':
-        backbone = SimpleTCNBackbone(
-            input_dim=input_dim,
-            hidden_dim=model_spec['hidden_size'],
-            kernel_size=model_spec.get('kernel_size', 3)
-        )
-    else:
-        raise ValueError(f"Unknown backbone type: {backbone_type}")
+    Args:
+        config (dict): Configuration dictionary.
+        dataset: PredictionDataset instance (to get data shapes).
+    
+    Returns:
+        nn.Module: The constructed model.
+    """
+    # Get data dimensions from first sample
+    emg_sample, angle_sample, _ = dataset[0]
+    n_channels = emg_sample.shape[0]
+    n_freq_scales = emg_sample.shape[2]
+    n_angles = angle_sample.shape[0]
+    
+    model_spec = config['model_spec']
+    feature_mode = config.get('feature_mode', 'both')
+    
+    logger.info(f"Building dual-backbone model:")
+    logger.info(f"  EMG shape: ({n_channels} channels, {emg_sample.shape[1]} time, {n_freq_scales} freq)")
+    logger.info(f"  Angle shape: ({n_angles} angles, {angle_sample.shape[1]} time)")
+    logger.info(f"  Feature mode: {feature_mode}")
+    
+    # Build EMG backbone
+    emg_backbone = EMGScalogramBackbone(
+        n_channels=n_channels,
+        n_freq_scales=n_freq_scales,
+        hidden_dim=model_spec['emg_hidden_dim'],
+        backbone_type=model_spec.get('emg_backbone_type', 'conv2d_lstm')
+    )
+    logger.info(f"  EMG backbone: {model_spec.get('emg_backbone_type', 'conv2d_lstm')} (hidden_dim={model_spec['emg_hidden_dim']})")
+    
+    # Build angle backbone
+    angle_backbone = AngleHistoryBackbone(
+        n_angles=n_angles,
+        hidden_dim=model_spec['angle_hidden_dim'],
+        backbone_type=model_spec.get('angle_backbone_type', 'lstm')
+    )
+    logger.info(f"  Angle backbone: {model_spec.get('angle_backbone_type', 'lstm')} (hidden_dim={model_spec['angle_hidden_dim']})")
+    
+    # Build dual backbone
+    dual_backbone = DualBackbone(
+        emg_backbone=emg_backbone,
+        angle_backbone=angle_backbone,
+        feature_mode=feature_mode,
+        fusion_hidden_dim=model_spec['fusion_hidden_dim']
+    )
+    logger.info(f"  Fusion layer: hidden_dim={model_spec['fusion_hidden_dim']}")
     
     # Build predictor
     prediction_type = config['prediction_type']
-    
     if prediction_type == 'deterministic':
-        model = DeterministicModel(backbone)
+        model = DeterministicModel(dual_backbone)
     elif prediction_type == 'probabilistic':
-        model = ProbabilisticModel(backbone)
+        model = ProbabilisticModel(dual_backbone)
     else:
         raise ValueError(f"Unknown prediction type: {prediction_type}")
+    
+    logger.info(f"  Prediction type: {prediction_type}")
     
     return model
 
@@ -202,23 +243,32 @@ def main():
     logger.info("\nPreparing datasets...")
     use_cache = config.get('use_cache', True)
     
-    train_dataset = PredictionDataset(
-        mode='train',
-        window_length=config['sample_window_length'],
-        stride=config['sample_stride'],
-        prediction_horizon=config['prediction_horizon'],
-        target_angle_name=config['target_angle_name'],
-        use_cache=use_cache
-    )
+    # Get wavelet parameters from config if using DualBackbone
+    dataset_kwargs = {
+        'mode': 'train',
+        'window_length': config['sample_window_length'],
+        'stride': config['sample_stride'],
+        'prediction_horizon': config['prediction_horizon'],
+        'target_angle_name': config['target_angle_name'],
+        'use_cache': use_cache
+    }
     
-    val_dataset = PredictionDataset(
-        mode='test',  # Using test set as validation for now
-        window_length=config['sample_window_length'],
-        stride=config['sample_stride'],
-        prediction_horizon=config['prediction_horizon'],
-        target_angle_name=config['target_angle_name'],
-        use_cache=use_cache
-    )
+    # Add wavelet parameters if they exist in config
+    if 'output_fs' in config:
+        dataset_kwargs['output_fs'] = config['output_fs']
+    if 'freq_min' in config:
+        dataset_kwargs['freq_min'] = config['freq_min']
+    if 'freq_max' in config:
+        dataset_kwargs['freq_max'] = config['freq_max']
+    if 'n_scales' in config:
+        dataset_kwargs['n_scales'] = config['n_scales']
+    
+    train_dataset = PredictionDataset(**dataset_kwargs)
+    
+    # Create validation dataset with same parameters
+    val_dataset_kwargs = dataset_kwargs.copy()
+    val_dataset_kwargs['mode'] = 'test'
+    val_dataset = PredictionDataset(**val_dataset_kwargs)
     
     test_dataset = val_dataset  # Same as validation
     
@@ -253,7 +303,15 @@ def main():
     
     # Build model
     logger.info("\nBuilding model...")
-    model = build_model(config, input_dim)
+    backbone_type = config['backbone']
+    
+    if backbone_type == 'DualBackbone':
+        # Use dual-backbone architecture for wavelet data
+        model = build_dual_backbone_model(config, train_dataset)
+    else:
+        # Use traditional single-backbone architecture
+        model = build_model(config, input_dim)
+    
     model = model.to(device)
     
     # Count parameters

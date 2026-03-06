@@ -25,10 +25,10 @@ class BaseTrainer:
             "val_mae": []
         }
 
-    def compute_loss(self, x, y):
+    def compute_loss(self, emg_data, angle_data, y):
         raise NotImplementedError("Subclasses must implement compute_loss")
 
-    def get_predictions(self, x):
+    def get_predictions(self, emg_data, angle_data):
         raise NotImplementedError("Subclasses must implement get_predictions")
 
     def train(self, epochs, save_dir=".", log_interval=1, save_best_model=True, save_last_model=True):
@@ -40,11 +40,13 @@ class BaseTrainer:
             self.model.train()
             train_loss = 0.0
             
-            for x, y in tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{epochs} [Train]", leave=False):
-                x, y = x.to(self.device), y.to(self.device)
+            for emg_data, angle_data, y in tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{epochs} [Train]", leave=False):
+                emg_data = emg_data.to(self.device)
+                angle_data = angle_data.to(self.device)
+                y = y.to(self.device)
                 
                 self.optimizer.zero_grad()
-                loss = self.compute_loss(x, y)
+                loss = self.compute_loss(emg_data, angle_data, y)
                 loss.backward()
                 self.optimizer.step()
                 
@@ -59,14 +61,16 @@ class BaseTrainer:
             val_total = 0
             
             with torch.no_grad():
-                for x, y in tqdm(self.val_loader, desc=f"Epoch {epoch+1}/{epochs} [Val]", leave=False):
-                    x, y = x.to(self.device), y.to(self.device)
+                for emg_data, angle_data, y in tqdm(self.val_loader, desc=f"Epoch {epoch+1}/{epochs} [Val]", leave=False):
+                    emg_data = emg_data.to(self.device)
+                    angle_data = angle_data.to(self.device)
+                    y = y.to(self.device)
                     
-                    loss = self.compute_loss(x, y)
+                    loss = self.compute_loss(emg_data, angle_data, y)
                     val_loss += loss.item()
                     
                     # Get deterministic prediction for MAE calculation
-                    preds = self.get_predictions(x)
+                    preds = self.get_predictions(emg_data, angle_data)
                     if preds.shape != y.shape:
                         preds = preds.view_as(y)
                         
@@ -114,14 +118,16 @@ class BaseTrainer:
         os.makedirs(save_dir, exist_ok=True)
         
         with torch.no_grad():
-            for x, y in tqdm(self.test_loader, desc="Testing", leave=False):
-                x, y = x.to(self.device), y.to(self.device)
+            for emg_data, angle_data, y in tqdm(self.test_loader, desc="Testing", leave=False):
+                emg_data = emg_data.to(self.device)
+                angle_data = angle_data.to(self.device)
+                y = y.to(self.device)
                 
-                loss = self.compute_loss(x, y)
+                loss = self.compute_loss(emg_data, angle_data, y)
                 test_loss += loss.item()
                 
                 # Retrieve predictions (and uncertainty if applicable)
-                preds = self.get_predictions(x, return_std=True)
+                preds = self.get_predictions(emg_data, angle_data, return_std=True)
                 
                 if isinstance(preds, tuple):
                     out, std = preds
