@@ -178,15 +178,17 @@ def build_dual_backbone_model(config: dict, dataset):
     logger.info(f"  Fusion layer: hidden_dim={model_spec['fusion_hidden_dim']}")
     
     # Build predictor
+    n_target_angles = len(config['target_angle_name'])
     prediction_type = config['prediction_type']
     if prediction_type == 'deterministic':
-        model = DeterministicModel(dual_backbone)
+        model = DeterministicModel(dual_backbone, output_dim=n_target_angles)
     elif prediction_type == 'probabilistic':
-        model = ProbabilisticModel(dual_backbone)
+        model = ProbabilisticModel(dual_backbone, output_dim=n_target_angles)
     else:
         raise ValueError(f"Unknown prediction type: {prediction_type}")
     
     logger.info(f"  Prediction type: {prediction_type}")
+    logger.info(f"  Output dimension: {n_target_angles} angles")
     
     return model
 
