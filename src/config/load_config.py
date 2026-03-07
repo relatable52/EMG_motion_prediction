@@ -121,6 +121,7 @@ def merge_config_with_args(config: Dict[str, Any], args: Any) -> Dict[str, Any]:
         'epochs': 'epochs',
         'backbone': 'backbone',
         'prediction_type': 'prediction_type',
+        'feature_mode': 'feature_mode',
         'sample_window_length': 'sample_window_length',
         'prediction_horizon': 'prediction_horizon',
         'sample_stride': 'sample_stride',
@@ -142,6 +143,16 @@ def merge_config_with_args(config: Dict[str, Any], args: Any) -> Dict[str, Any]:
     if hasattr(args, 'target_angle_name') and args.target_angle_name is not None:
         if isinstance(args.target_angle_name, str):
             merged_config['target_angle_name'] = [name.strip() for name in args.target_angle_name.split(',')]
+    
+    # Handle model_spec nested fields (emg_backbone_type, angle_backbone_type)
+    if 'model_spec' not in merged_config:
+        merged_config['model_spec'] = {}
+    
+    if hasattr(args, 'emg_backbone_type') and args.emg_backbone_type is not None:
+        merged_config['model_spec']['emg_backbone_type'] = args.emg_backbone_type
+    
+    if hasattr(args, 'angle_backbone_type') and args.angle_backbone_type is not None:
+        merged_config['model_spec']['angle_backbone_type'] = args.angle_backbone_type
     
     return merged_config
 

@@ -84,6 +84,15 @@ def parse_args():
     parser.add_argument('--prediction_type', type=str, default=None, 
                        choices=['deterministic', 'probabilistic'],
                        help='Prediction type')
+    parser.add_argument('--feature_mode', type=str, default=None,
+                       choices=['both', 'emg_only', 'angle_only'],
+                       help='Feature mode: which features to use')
+    parser.add_argument('--emg_backbone_type', type=str, default=None,
+                       choices=['conv2d_lstm', 'flatten_lstm'],
+                       help='EMG backbone architecture type')
+    parser.add_argument('--angle_backbone_type', type=str, default=None,
+                       choices=['lstm', 'tcn'],
+                       help='Angle backbone architecture type')
     
     # Logging and model saving
     parser.add_argument('--log_interval', type=int, default=None,
