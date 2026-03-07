@@ -220,7 +220,7 @@ def build_train_command(experiment: Dict[str, Any], config_path: str, seed: int)
     """
     cmd = [
         sys.executable,  # Use same Python interpreter
-        "src/scripts/train_and_test.py",
+        "scripts/train_and_test.py",
         "--config", config_path,
         "--experiment_name", experiment["experiment_name"],
         "--feature_mode", experiment["feature_mode"],
@@ -503,7 +503,7 @@ Examples:
     parser.add_argument(
         '--config',
         type=str,
-        default='src/config/config_dual_backbone.yaml',
+        default='config/config_dual_backbone.yaml',
         help='Path to base configuration file (default: src/config/config_dual_backbone.yaml)'
     )
     
