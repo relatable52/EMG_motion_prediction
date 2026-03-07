@@ -10,6 +10,7 @@ import subprocess
 
 import pandas as pd
 import matplotlib.pyplot as plt
+import yaml
 from dotenv import load_dotenv
 
 from config.load_config import save_config
@@ -169,3 +170,18 @@ def copy_log_to_experiment(log_file: str, experiment_dir: Path) -> None:
     if os.path.exists(log_file):
         dest_path = experiment_dir / "experiment.log"
         shutil.copy2(log_file, dest_path)
+
+
+def save_test_metrics(metrics: Dict[str, Any], save_path: str) -> None:
+    """
+    Save test metrics to a YAML file.
+    
+    Args:
+        metrics (dict): Dictionary containing test metrics.
+        save_path (str): Path where to save the metrics file.
+    """
+    save_path = Path(save_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    with open(save_path, 'w') as f:
+        yaml.dump(metrics, f, default_flow_style=False, sort_keys=False)

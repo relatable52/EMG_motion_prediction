@@ -383,7 +383,11 @@ def main():
     logger.info("STARTING TESTING")
     logger.info("=" * 80)
     
-    test_results = trainer.test(save_dir=str(experiment_dir), prefix="test")
+    test_results = trainer.test(
+        save_dir=str(experiment_dir), 
+        prefix="test",
+        angle_names=config['target_angle_name']
+    )
     
     logger.info("\n" + "=" * 80)
     logger.info("EXPERIMENT COMPLETE")

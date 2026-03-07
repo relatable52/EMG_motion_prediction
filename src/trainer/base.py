@@ -7,6 +7,7 @@ from scipy.stats import pearsonr
 from tqdm import tqdm
 
 from utils.logger import logger
+from utils.experiment import save_test_metrics
 
 class BaseTrainer:
     def __init__(self, model, train_loader, val_loader, test_loader, optimizer, device, n_features=32):
@@ -105,7 +106,7 @@ class BaseTrainer:
         logger.info(f"\nTraining complete. Best Val Loss: {best_val_loss:.4f} at epoch {best_epoch}")
         return self.history
 
-    def test(self, save_dir="results", prefix="model"):
+    def test(self, save_dir="results", prefix="model", angle_names=None):
         self.model.eval()
         test_loss = 0.0
         test_mae = 0.0
@@ -144,32 +145,44 @@ class BaseTrainer:
                 all_labels.append(y.cpu().numpy())
                 test_total += y.size(0)
 
-        # Flatten arrays for global metrics
-        all_preds = np.concatenate(all_preds).flatten()
-        all_labels = np.concatenate(all_labels).flatten()
+        # Keep predictions as 2D arrays: (n_samples, n_angles)
+        all_preds = np.concatenate(all_preds)  # Shape: (n_samples, n_angles)
+        all_labels = np.concatenate(all_labels)  # Shape: (n_samples, n_angles)
+        
+        n_samples, n_angles = all_preds.shape
+        
+        # Generate angle names if not provided
+        if angle_names is None:
+            angle_names = [f"angle_{i}" for i in range(n_angles)]
 
+        # ============================================================
+        # GLOBAL METRICS (across all angles, flattened)
+        # ============================================================
+        all_preds_flat = all_preds.flatten()
+        all_labels_flat = all_labels.flatten()
+        
         # 1. Basic Error Metrics
         avg_test_loss = test_loss / len(self.test_loader)
         avg_test_rmse = np.sqrt(avg_test_loss)
         avg_test_mae = test_mae / test_total
 
         # 2. nRMSE (%)
-        label_range = np.max(all_labels) - np.min(all_labels)
+        label_range = np.max(all_labels_flat) - np.min(all_labels_flat)
         nrmse_percent = (avg_test_rmse / label_range) * 100 if label_range > 0 else 0
 
         # 3. R^2 and Adjusted R^2
-        ss_res = np.sum((all_labels - all_preds) ** 2)
-        ss_tot = np.sum((all_labels - np.mean(all_labels)) ** 2)
+        ss_res = np.sum((all_labels_flat - all_preds_flat) ** 2)
+        ss_tot = np.sum((all_labels_flat - np.mean(all_labels_flat)) ** 2)
         r2_score = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
         
-        n = test_total
+        n = n_samples
         p = self.n_features
         adj_r2 = 1 - ((1 - r2_score) * (n - 1) / (n - p - 1)) if n > p + 1 else r2_score
 
         # 4. Pearson Correlation Coefficient (r)
-        corr_coeff, _ = pearsonr(all_labels, all_preds)
+        corr_coeff, _ = pearsonr(all_labels_flat, all_preds_flat)
 
-        logger.info(f"\nTest Results:")
+        logger.info(f"\nTest Results (Global):")
         logger.info(f" MSE Loss:  {avg_test_loss:.4f}")
         logger.info(f" RMSE:      {avg_test_rmse:.4f}°")
         logger.info(f" nRMSE:     {nrmse_percent:.2f}%")
@@ -178,29 +191,81 @@ class BaseTrainer:
         logger.info(f" R² Score:  {r2_score:.4f}")
         logger.info(f" Adj. R²:   {adj_r2:.4f}")
         
-        # Save predictions to CSV
+        # ============================================================
+        # PER-ANGLE METRICS
+        # ============================================================
+        per_angle_metrics = {}
+        
+        logger.info(f"\nPer-Angle Metrics:")
+        for i, angle_name in enumerate(angle_names):
+            angle_preds = all_preds[:, i]
+            angle_labels = all_labels[:, i]
+            
+            # Compute metrics for this angle
+            angle_mse = np.mean((angle_labels - angle_preds) ** 2)
+            angle_rmse = np.sqrt(angle_mse)
+            angle_mae = np.mean(np.abs(angle_labels - angle_preds))
+            
+            angle_range = np.max(angle_labels) - np.min(angle_labels)
+            angle_nrmse = (angle_rmse / angle_range) * 100 if angle_range > 0 else 0
+            
+            angle_ss_res = np.sum((angle_labels - angle_preds) ** 2)
+            angle_ss_tot = np.sum((angle_labels - np.mean(angle_labels)) ** 2)
+            angle_r2 = 1 - (angle_ss_res / angle_ss_tot) if angle_ss_tot > 0 else 0
+            
+            angle_corr, _ = pearsonr(angle_labels, angle_preds)
+            
+            per_angle_metrics[angle_name] = {
+                "mse": float(angle_mse),
+                "rmse": float(angle_rmse),
+                "nrmse": float(angle_nrmse),
+                "mae": float(angle_mae),
+                "pearson_r": float(angle_corr),
+                "r2": float(angle_r2)
+            }
+            
+            logger.info(f" {angle_name}: MAE={angle_mae:.4f}°, RMSE={angle_rmse:.4f}°, R²={angle_r2:.4f}")
+        
+        # ============================================================
+        # BUILD DATAFRAME WITH TUPLE COLUMNS
+        # ============================================================
         save_df = pd.DataFrame({
-            'True_Angle': all_labels,
-            'Predicted_Angle': all_preds
+            'True_Angles': [tuple(row) for row in all_labels],
+            'Pred_Angles': [tuple(row) for row in all_preds]
         })
         
         if all_stds:
-            all_stds = np.concatenate(all_stds).flatten()
-            save_df['Uncertainty_Std'] = all_stds
-            logger.info(f" Mean Std:  {np.mean(all_stds):.4f}°")
+            all_stds = np.concatenate(all_stds)  # Shape: (n_samples, n_angles)
+            save_df['Uncertainty_Std'] = [tuple(row) for row in all_stds]
+            mean_std_per_angle = np.mean(all_stds, axis=0)
+            logger.info(f"\nMean Uncertainty Std per angle: {[f'{s:.4f}' for s in mean_std_per_angle]}")
             
         csv_path = os.path.join(save_dir, f"{prefix}_predictions.csv")
         save_df.to_csv(csv_path, index=False)
-        logger.info(f"Predictions saved to: {csv_path}")
+        logger.info(f"\nPredictions saved to: {csv_path}")
 
+        # ============================================================
+        # BUILD METRICS DICTIONARY AND SAVE TO YAML
+        # ============================================================
         metrics = {
-            "mse": avg_test_loss,
-            "rmse": avg_test_rmse,
-            "nrmse": nrmse_percent,
-            "mae": avg_test_mae,
-            "pearson_r": corr_coeff,
-            "r2": r2_score,
-            "adj_r2": adj_r2
+            "angle_names": angle_names,
+            "n_samples": int(n_samples),
+            "n_angles": int(n_angles),
+            "global": {
+                "mse": float(avg_test_loss),
+                "rmse": float(avg_test_rmse),
+                "nrmse": float(nrmse_percent),
+                "mae": float(avg_test_mae),
+                "pearson_r": float(corr_coeff),
+                "r2": float(r2_score),
+                "adj_r2": float(adj_r2)
+            },
+            "per_angle": per_angle_metrics
         }
+        
+        # Save metrics to YAML
+        metrics_path = os.path.join(save_dir, f"{prefix}_metrics.yaml")
+        save_test_metrics(metrics, metrics_path)
+        logger.info(f"Metrics saved to: {metrics_path}")
         
         return metrics, save_df
