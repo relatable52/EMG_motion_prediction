@@ -66,14 +66,14 @@ def generate_feature_importance_experiments() -> List[Dict[str, Any]]:
     
     Variable parameters:
         - feature_mode: {both, emg_only, angle_only}
-        - prediction_horizon: {0.1, 0.2, 0.3, 0.5, 0.8, 1.0}
+        - prediction_horizon: {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0}
     
     Returns:
         List of 18 experiment configuration dictionaries
     """
     experiments = []
     feature_modes = ["both", "emg_only", "angle_only"]
-    prediction_horizons = [0.1, 0.2, 0.3, 0.5, 0.8, 1.0]
+    prediction_horizons = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
     sample_window_length = 1.0
     
     for feature_mode in feature_modes:
@@ -103,14 +103,14 @@ def generate_sample_length_experiments() -> List[Dict[str, Any]]:
     
     Variable parameters:
         - feature_mode: {both, emg_only, angle_only}
-        - sample_window_length: {0.1, 0.2, 0.5, 1.0}
+        - sample_window_length: {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0}
     
     Returns:
         List of 12 experiment configuration dictionaries
     """
     experiments = []
     feature_modes = ["both", "emg_only", "angle_only"]
-    sample_window_lengths = [0.1, 0.2, 0.5, 1.0]
+    sample_window_lengths = [i*0.1 for i in range(1, 11)]  # 0.1 to 1.0 in steps of 0.1
     prediction_horizon = 0.5
     
     for feature_mode in feature_modes:

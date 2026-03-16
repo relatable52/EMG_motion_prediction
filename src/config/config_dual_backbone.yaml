@@ -16,7 +16,7 @@ target_angle_name:
 # Data processing parameters
 sample_window_length: 1.0  # seconds
 prediction_horizon: 0.5    # seconds
-sample_stride: 0.1         # seconds
+sample_stride: 0.05         # seconds
 use_cache: true
 
 # Wavelet parameters (in dataset)

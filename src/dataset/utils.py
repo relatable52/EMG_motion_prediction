@@ -56,7 +56,7 @@ DATA_FILES = _get_data_files()
 
 TRAIN_FILES, TEST_FILES = train_test_split(DATA_FILES, test_size=0.2, random_state=42)
 
-def _compute_wavelet_scalogram(channel_data, fs=1000, output_fs=100, freq_min=20, freq_max=450, n_scales=40):
+def _compute_wavelet_scalogram(channel_data, fs=1000, output_fs=100, freq_min=5, freq_max=450, n_scales=40):
     """
     Compute wavelet scalogram for a single EMG channel using Continuous Wavelet Transform.
     
@@ -64,7 +64,7 @@ def _compute_wavelet_scalogram(channel_data, fs=1000, output_fs=100, freq_min=20
         channel_data (np.ndarray): 1D array of filtered EMG data.
         fs (int): Sampling frequency of input data (Hz). Default 1000.
         output_fs (int): Target output sampling frequency (Hz). Default 100.
-        freq_min (float): Minimum frequency of interest (Hz). Default 20.
+        freq_min (float): Minimum frequency of interest (Hz). Default 5.
         freq_max (float): Maximum frequency of interest (Hz). Default 450.
         n_scales (int): Number of frequency scales. Default 40.
     
@@ -94,7 +94,7 @@ def _compute_wavelet_scalogram(channel_data, fs=1000, output_fs=100, freq_min=20
     
     return scalogram, freqs
 
-def _process_emg_file(emg_file, output_fs=100, freq_min=20, freq_max=450, n_scales=40):
+def _process_emg_file(emg_file, output_fs=100, freq_min=5, freq_max=450, n_scales=40):
     """
     Process the EMG file using Continuous Wavelet Transform to generate scalograms.
 
