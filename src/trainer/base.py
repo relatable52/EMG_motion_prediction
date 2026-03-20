@@ -76,10 +76,10 @@ class BaseTrainer:
                         preds = preds.view_as(y)
                         
                     val_mae += torch.abs(preds - y).sum().item()
-                        val_total_elements += y.numel()
+                    val_total_elements += y.numel()
                     
             avg_val_loss = val_loss / len(self.val_loader)
-                    avg_val_mae = val_mae / val_total_elements if val_total_elements > 0 else 0.0
+            avg_val_mae = val_mae / val_total_elements if val_total_elements > 0 else 0.0
             
             # Save history (always record, even if not logging)
             self.history["train_loss"].append(avg_train_loss)
