@@ -195,10 +195,20 @@ def extract_metrics_from_result(result_dir: Path) -> Dict[str, Optional[float]]:
         with open(metrics_file, 'r') as f:
             metrics = yaml.safe_load(f)
         
-        # Extract global metrics
-        global_metrics = metrics.get("global_metrics", {})
-        mae = global_metrics.get("MAE")
-        rmse = global_metrics.get("RMSE")
+        # Extract global metrics with backward compatibility.
+        # New schema uses: {"global": {"mae": ..., "rmse": ...}}
+        global_metrics = metrics.get("global")
+        if not global_metrics:
+            # Legacy schema fallback.
+            global_metrics = metrics.get("global_metrics", {})
+
+        mae = global_metrics.get("mae")
+        rmse = global_metrics.get("rmse")
+
+        if mae is None:
+            mae = global_metrics.get("MAE")
+        if rmse is None:
+            rmse = global_metrics.get("RMSE")
         
         return {"mae": mae, "rmse": rmse}
     except Exception as e:

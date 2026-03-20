@@ -59,7 +59,7 @@ class BaseTrainer:
             self.model.eval()
             val_loss = 0.0
             val_mae = 0.0
-            val_total = 0
+            val_total_elements = 0
             
             with torch.no_grad():
                 for emg_data, angle_data, y in tqdm(self.val_loader, desc=f"Epoch {epoch+1}/{epochs} [Val]", leave=False):
@@ -76,10 +76,10 @@ class BaseTrainer:
                         preds = preds.view_as(y)
                         
                     val_mae += torch.abs(preds - y).sum().item()
-                    val_total += y.size(0)
+                        val_total_elements += y.numel()
                     
             avg_val_loss = val_loss / len(self.val_loader)
-            avg_val_mae = val_mae / val_total
+                    avg_val_mae = val_mae / val_total_elements if val_total_elements > 0 else 0.0
             
             # Save history (always record, even if not logging)
             self.history["train_loss"].append(avg_train_loss)
@@ -109,8 +109,6 @@ class BaseTrainer:
     def test(self, save_dir="results", prefix="model", angle_names=None):
         self.model.eval()
         test_loss = 0.0
-        test_mae = 0.0
-        test_total = 0
         
         all_preds = []
         all_labels = []
@@ -138,12 +136,9 @@ class BaseTrainer:
                 
                 if out.shape != y.shape:
                     out = out.view_as(y)
-                    
-                test_mae += torch.abs(out - y).sum().item()
                 
                 all_preds.append(out.cpu().numpy())
                 all_labels.append(y.cpu().numpy())
-                test_total += y.size(0)
 
         # Keep predictions as 2D arrays: (n_samples, n_angles)
         all_preds = np.concatenate(all_preds)  # Shape: (n_samples, n_angles)
@@ -160,15 +155,22 @@ class BaseTrainer:
         # ============================================================
         all_preds_flat = all_preds.flatten()
         all_labels_flat = all_labels.flatten()
+        all_errors_flat = all_labels_flat - all_preds_flat
         
-        # 1. Basic Error Metrics
-        avg_test_loss = test_loss / len(self.test_loader)
-        avg_test_rmse = np.sqrt(avg_test_loss)
-        avg_test_mae = test_mae / test_total
+        # 1. Objective loss and prediction error metrics
+        avg_test_objective_loss = test_loss / len(self.test_loader)
+        global_mse = np.mean(all_errors_flat ** 2)
+        global_rmse = np.sqrt(global_mse)
+        # Average MAE over both samples and angles.
+        global_mae = np.mean(np.abs(all_errors_flat))
+
+        objective_name = "loss"
+        if hasattr(self, 'criterion') and self.criterion is not None:
+            objective_name = self.criterion.__class__.__name__
 
         # 2. nRMSE (%)
         label_range = np.max(all_labels_flat) - np.min(all_labels_flat)
-        nrmse_percent = (avg_test_rmse / label_range) * 100 if label_range > 0 else 0
+        nrmse_percent = (global_rmse / label_range) * 100 if label_range > 0 else 0
 
         # 3. R^2 and Adjusted R^2
         ss_res = np.sum((all_labels_flat - all_preds_flat) ** 2)
@@ -183,10 +185,11 @@ class BaseTrainer:
         corr_coeff, _ = pearsonr(all_labels_flat, all_preds_flat)
 
         logger.info(f"\nTest Results (Global):")
-        logger.info(f" MSE Loss:  {avg_test_loss:.4f}")
-        logger.info(f" RMSE:      {avg_test_rmse:.4f}°")
+        logger.info(f" {objective_name}: {avg_test_objective_loss:.4f}")
+        logger.info(f" MSE:       {global_mse:.4f}")
+        logger.info(f" RMSE:      {global_rmse:.4f}°")
         logger.info(f" nRMSE:     {nrmse_percent:.2f}%")
-        logger.info(f" MAE:       {avg_test_mae:.4f}°")
+        logger.info(f" MAE:       {global_mae:.4f}°")
         logger.info(f" Pearson r: {corr_coeff:.4f}")
         logger.info(f" R² Score:  {r2_score:.4f}")
         logger.info(f" Adj. R²:   {adj_r2:.4f}")
@@ -252,10 +255,12 @@ class BaseTrainer:
             "n_samples": int(n_samples),
             "n_angles": int(n_angles),
             "global": {
-                "mse": float(avg_test_loss),
-                "rmse": float(avg_test_rmse),
+                "objective_name": objective_name,
+                "objective_loss": float(avg_test_objective_loss),
+                "mse": float(global_mse),
+                "rmse": float(global_rmse),
                 "nrmse": float(nrmse_percent),
-                "mae": float(avg_test_mae),
+                "mae": float(global_mae),
                 "pearson_r": float(corr_coeff),
                 "r2": float(r2_score),
                 "adj_r2": float(adj_r2)
