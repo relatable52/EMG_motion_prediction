@@ -56,8 +56,11 @@ class ProbabilisticTrainer(BaseTrainer):
         if pred_mean.shape != y.shape:
             pred_mean = pred_mean.view_as(y)
             pred_logvar = pred_logvar.view_as(y)
-            
-        return self.criterion(pred_mean, y, pred_logvar)
+
+        # Model predicts log-variance; GaussianNLLLoss expects strictly positive variance.
+        pred_var = torch.exp(pred_logvar)
+
+        return self.criterion(pred_mean, y, pred_var)
 
     def get_predictions(self, emg_data, angle_data, return_std=False):
         feature_mode = self.model.backbone.feature_mode
