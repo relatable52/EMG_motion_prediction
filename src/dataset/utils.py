@@ -25,6 +25,27 @@ ACTIVITIES = [
     'normal_walk_1_1-8',
     'normal_walk_1_2-0',
     'normal_walk_1_2-5',
+    'normal_walk_1_shuffle',
+    'normal_walk_1_skip',
+    'incline_walk_1_down5',
+    'incline_walk_1_down10',
+    'incline_walk_2_up5',
+    'incline_walk_2_up10',
+    'walk_backward_1_0-6',
+    'walk_backward_1_0-8',
+    'walk_backward_1_1-0',
+    'weighted_walk_1_25lbs',
+    'stair_1_1_up',
+    'stair_1_2_down',
+    'stair_1_3_up',
+    'stair_1_4_down',
+    'stair_1_5_up',
+    'stair_1_6_down',
+    'stair_1_7_up',
+    'stair_1_8_down',
+    'stair_1_9_up',
+    'stair_1_10_down',
+    'tire_run_1'
 ]
 SUBJECTS = [f'AB{i:02}' for i in range(1, 14)]
 
