@@ -8,7 +8,7 @@ import numpy as np
 import pywt
 from scipy.signal import butter, filtfilt, decimate
 from sklearn.model_selection import train_test_split
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from utils.logger import logger
 
@@ -25,29 +25,29 @@ ACTIVITIES = [
     'normal_walk_1_1-8',
     'normal_walk_1_2-0',
     'normal_walk_1_2-5',
-    # 'normal_walk_1_shuffle',
-    # 'normal_walk_1_skip',
-    # 'incline_walk_1_down5',
-    # 'incline_walk_2_down10',
-    # 'incline_walk_1_up5',
-    # 'incline_walk_2_up10',
-    # 'walk_backward_1_0-6',
-    # 'walk_backward_1_0-8',
-    # 'walk_backward_1_1-0',
-    # 'weighted_walk_1_25lbs',
-    # 'stairs_1_1_up',
-    # 'stairs_1_2_down',
-    # 'stairs_1_3_up',
-    # 'stairs_1_4_down',
-    # 'stairs_1_5_up',
-    # 'stairs_1_6_down',
-    # 'stairs_1_7_up',
-    # 'stairs_1_8_down',
-    # 'stairs_1_9_up',
-    # 'stairs_1_10_down',
-    # 'tire_run_1'
+    'normal_walk_1_shuffle',
+    'normal_walk_1_skip',
+    'incline_walk_1_down5',
+    'incline_walk_2_down10',
+    'incline_walk_1_up5',
+    'incline_walk_2_up10',
+    'walk_backward_1_0-6',
+    'walk_backward_1_0-8',
+    'walk_backward_1_1-0',
+    'weighted_walk_1_25lbs',
+    'stairs_1_1_up',
+    'stairs_1_2_down',
+    'stairs_1_3_up',
+    'stairs_1_4_down',
+    'stairs_1_5_up',
+    'stairs_1_6_down',
+    'stairs_1_7_up',
+    'stairs_1_8_down',
+    'stairs_1_9_up',
+    'stairs_1_10_down',
+    'tire_run_1'
 ]
-SUBJECTS = [f'AB{i:02}' for i in range(1, 14)]
+SUBJECTS = [f'AB{i:02}' for i in range(1, 1)]
 
 def _get_data_files() -> dict:
     """
