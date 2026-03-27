@@ -4,7 +4,7 @@ import torch
 import numpy as np
 import pandas as pd
 from scipy.stats import pearsonr
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from utils.logger import logger
 from utils.experiment import save_test_metrics
