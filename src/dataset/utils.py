@@ -47,7 +47,7 @@ ACTIVITIES = [
     'stairs_1_10_down',
     'tire_run_1'
 ]
-SUBJECTS = [f'AB{i:02}' for i in range(1, 1)]
+SUBJECTS = [f'AB{i:02}' for i in range(1, 2)]
 
 def _get_data_files() -> dict:
     """
