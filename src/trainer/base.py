@@ -123,17 +123,50 @@ class BaseTrainer:
         all_preds = []
         all_labels = []
         all_stds = [] # Only populated if using Uncertainty model
-        all_emg_scalograms = []  # NEW: Collect EMG scalograms
-        all_angle_histories = []  # NEW: Collect angle histories
-        all_features = []  # NEW: Collect extracted features
-        hook_handles = []  # NEW: Track hooks for cleanup
+        hook_handles = []
         
         os.makedirs(save_dir, exist_ok=True)
+
+        total_samples = len(self.test_loader.dataset)
+        emg_path = os.path.join(save_dir, f"{prefix}_emg_scalograms.npy")
+        angle_path = os.path.join(save_dir, f"{prefix}_angle_histories.npy")
+        features_csv_path = os.path.join(save_dir, f"{prefix}_features.csv")
+
+        # Disk-backed arrays avoid storing full test tensors in RAM.
+        emg_memmap = None
+        angle_memmap = None
+        emg_shape = None
+        angle_shape = None
+        sample_offset = 0
+
+        capture_state = {
+            "enabled": False,
+            "start": 0,
+            "feature_dim": None,
+            "written": 0,
+            "header_written": False,
+        }
+
+        if os.path.exists(features_csv_path):
+            os.remove(features_csv_path)
         
         # Register hook to capture features from fusion layer
         def fusion_hook(module, input, output):
-            """Capture output from DualBackbone fusion layer."""
-            all_features.append(output.detach().cpu().numpy())
+            if not capture_state["enabled"]:
+                return
+
+            feature_batch = output.detach().cpu().numpy().astype(np.float32, copy=False)
+            batch_size, feat_dim = feature_batch.shape
+            capture_state["feature_dim"] = feat_dim
+            capture_state["written"] += batch_size
+
+            mode = "a" if capture_state["header_written"] else "w"
+            with open(features_csv_path, mode) as f:
+                if not capture_state["header_written"]:
+                    header = ",".join([f"feature_{i}" for i in range(feat_dim)])
+                    f.write(header + "\n")
+                    capture_state["header_written"] = True
+                np.savetxt(f, feature_batch, delimiter=",")
         
         if hasattr(self.model.backbone, 'fusion'):
             hook_handle = self.model.backbone.fusion.register_forward_hook(fusion_hook)
@@ -145,16 +178,39 @@ class BaseTrainer:
                     emg_data = emg_data.to(self.device)
                     angle_data = angle_data.to(self.device)
                     y = y.to(self.device)
+
+                    emg_np = emg_data.cpu().numpy().astype(np.float32, copy=False)
+                    angle_np = angle_data.cpu().numpy().astype(np.float32, copy=False)
+                    batch_size = emg_np.shape[0]
+
+                    if emg_memmap is None:
+                        emg_shape = (total_samples,) + tuple(emg_np.shape[1:])
+                        emg_memmap = np.lib.format.open_memmap(
+                            emg_path,
+                            mode="w+",
+                            dtype=np.float32,
+                            shape=emg_shape,
+                        )
+                    if angle_memmap is None:
+                        angle_shape = (total_samples,) + tuple(angle_np.shape[1:])
+                        angle_memmap = np.lib.format.open_memmap(
+                            angle_path,
+                            mode="w+",
+                            dtype=np.float32,
+                            shape=angle_shape,
+                        )
+
+                    end_offset = sample_offset + batch_size
+                    emg_memmap[sample_offset:end_offset] = emg_np
+                    angle_memmap[sample_offset:end_offset] = angle_np
                     
                     loss = self.compute_loss(emg_data, angle_data, y)
                     test_loss += loss.item()
-                    
-                    # NEW: Collect raw inputs
-                    all_emg_scalograms.append(emg_data.cpu().numpy())
-                    all_angle_histories.append(angle_data.cpu().numpy())
-                    
+
                     # Retrieve predictions (and uncertainty if applicable)
+                    capture_state["enabled"] = True
                     preds = self.get_predictions(emg_data, angle_data, return_std=True)
+                    capture_state["enabled"] = False
                     
                     if isinstance(preds, tuple):
                         out, std = preds
@@ -167,23 +223,33 @@ class BaseTrainer:
                     
                     all_preds.append(out.cpu().numpy())
                     all_labels.append(y.cpu().numpy())
+
+                    sample_offset = end_offset
         
         finally:
             for handle in hook_handles:
                 handle.remove()
+            if emg_memmap is not None:
+                del emg_memmap
+            if angle_memmap is not None:
+                del angle_memmap
 
         # Keep predictions as 2D arrays: (n_samples, n_angles)
         all_preds = np.concatenate(all_preds)  # Shape: (n_samples, n_angles)
         all_labels = np.concatenate(all_labels)  # Shape: (n_samples, n_angles)
-        
-        # NEW: Concatenate collected data
-        all_emg_scalograms = np.concatenate(all_emg_scalograms)
-        all_angle_histories = np.concatenate(all_angle_histories)
-        all_features = np.concatenate(all_features)
-        
+
         n_samples, n_angles = all_preds.shape
-        n_channels, time_steps, n_freq_scales = all_emg_scalograms.shape[1:]
-        fusion_hidden_dim = all_features.shape[1]
+        if sample_offset != n_samples:
+            logger.warning(
+                f"Sample count mismatch while writing arrays: written={sample_offset}, predictions={n_samples}"
+            )
+
+        if emg_shape is None or angle_shape is None:
+            raise RuntimeError("No test batches were processed; cannot save test artifacts.")
+
+        n_channels, time_steps, n_freq_scales = emg_shape[1:]
+        fusion_hidden_dim = capture_state["feature_dim"]
+        features_shape = [capture_state["written"], fusion_hidden_dim] if fusion_hidden_dim is not None else None
         
         # Generate angle names if not provided
         if angle_names is None:
@@ -192,24 +258,17 @@ class BaseTrainer:
         # ============================================================
         # SAVE EXTRACTED DATA AND INPUTS (NEW)
         # ============================================================
-        emg_path = os.path.join(save_dir, f"{prefix}_emg_scalograms.npy")
-        np.save(emg_path, all_emg_scalograms.astype(np.float32))
         logger.info(f"EMG scalograms saved to: {emg_path}")
-        logger.info(f"  Shape: {all_emg_scalograms.shape} (n_samples={n_samples}, n_channels={n_channels}, time={time_steps}, freq_scales={n_freq_scales})")
-        
-        angle_path = os.path.join(save_dir, f"{prefix}_angle_histories.npy")
-        np.save(angle_path, all_angle_histories.astype(np.float32))
+        logger.info(f"  Shape: {emg_shape} (n_samples={n_samples}, n_channels={n_channels}, time={time_steps}, freq_scales={n_freq_scales})")
+
         logger.info(f"Angle histories saved to: {angle_path}")
-        logger.info(f"  Shape: {all_angle_histories.shape} (n_samples={n_samples}, n_angles={n_angles}, time={time_steps})")
-        
-        features_df = pd.DataFrame(
-            all_features,
-            columns=[f"feature_{i}" for i in range(fusion_hidden_dim)]
-        )
-        features_csv_path = os.path.join(save_dir, f"{prefix}_features.csv")
-        features_df.to_csv(features_csv_path, index=False)
-        logger.info(f"Extracted features saved to: {features_csv_path}")
-        logger.info(f"  Shape: {all_features.shape} (n_samples={n_samples}, fusion_hidden_dim={fusion_hidden_dim})")
+        logger.info(f"  Shape: {angle_shape} (n_samples={n_samples}, n_angles={n_angles}, time={time_steps})")
+
+        if features_shape is not None:
+            logger.info(f"Extracted features saved to: {features_csv_path}")
+            logger.info(f"  Shape: {features_shape} (n_samples={capture_state['written']}, fusion_hidden_dim={fusion_hidden_dim})")
+        else:
+            logger.info("Extracted features were not saved (fusion hook unavailable).")
 
         # ============================================================
         # GLOBAL METRICS (across all angles, flattened)
@@ -317,19 +376,19 @@ class BaseTrainer:
             "n_angles": int(n_angles),
             "data_shapes": {  # NEW: Document saved data shapes
                 "emg_scalograms": {
-                    "shape": list(all_emg_scalograms.shape),
+                    "shape": list(emg_shape),
                     "dtype": "float32",
                     "file": f"{prefix}_emg_scalograms.npy",
                     "description": "EMG wavelet scalogram (time-frequency representation per channel)"
                 },
                 "angle_histories": {
-                    "shape": list(all_angle_histories.shape),
+                    "shape": list(angle_shape),
                     "dtype": "float32",
                     "file": f"{prefix}_angle_histories.npy",
                     "description": "Joint angle time series during input window"
                 },
                 "features": {
-                    "shape": list(all_features.shape),
+                    "shape": features_shape,
                     "dtype": "float32",
                     "file": f"{prefix}_features.csv",
                     "description": "Extracted features from DualBackbone fusion layer"
