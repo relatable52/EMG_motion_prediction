@@ -107,48 +107,109 @@ class BaseTrainer:
         return self.history
 
     def test(self, save_dir="results", prefix="model", angle_names=None):
+        """
+        Test the model and save predictions, extracted features, inputs, and metrics.
+        
+        Saves:
+        - {prefix}_predictions.csv: predictions and labels
+        - {prefix}_features.csv: extracted features from fusion layer
+        - {prefix}_emg_scalograms.npy: EMG scalograms with shape (n_samples, n_channels, time, freq_scales)
+        - {prefix}_angle_histories.npy: angle histories with shape (n_samples, n_angles, time)
+        - {prefix}_metrics.yaml: evaluation metrics with data shape documentation
+        """
         self.model.eval()
         test_loss = 0.0
         
         all_preds = []
         all_labels = []
         all_stds = [] # Only populated if using Uncertainty model
+        all_emg_scalograms = []  # NEW: Collect EMG scalograms
+        all_angle_histories = []  # NEW: Collect angle histories
+        all_features = []  # NEW: Collect extracted features
+        hook_handles = []  # NEW: Track hooks for cleanup
         
         os.makedirs(save_dir, exist_ok=True)
         
-        with torch.no_grad():
-            for emg_data, angle_data, y in tqdm(self.test_loader, desc="Testing", leave=False):
-                emg_data = emg_data.to(self.device)
-                angle_data = angle_data.to(self.device)
-                y = y.to(self.device)
-                
-                loss = self.compute_loss(emg_data, angle_data, y)
-                test_loss += loss.item()
-                
-                # Retrieve predictions (and uncertainty if applicable)
-                preds = self.get_predictions(emg_data, angle_data, return_std=True)
-                
-                if isinstance(preds, tuple):
-                    out, std = preds
-                    all_stds.append(std.cpu().numpy())
-                else:
-                    out = preds
-                
-                if out.shape != y.shape:
-                    out = out.view_as(y)
-                
-                all_preds.append(out.cpu().numpy())
-                all_labels.append(y.cpu().numpy())
+        # Register hook to capture features from fusion layer
+        def fusion_hook(module, input, output):
+            """Capture output from DualBackbone fusion layer."""
+            all_features.append(output.detach().cpu().numpy())
+        
+        if hasattr(self.model.backbone, 'fusion'):
+            hook_handle = self.model.backbone.fusion.register_forward_hook(fusion_hook)
+            hook_handles.append(hook_handle)
+        
+        try:
+            with torch.no_grad():
+                for emg_data, angle_data, y in tqdm(self.test_loader, desc="Testing", leave=False):
+                    emg_data = emg_data.to(self.device)
+                    angle_data = angle_data.to(self.device)
+                    y = y.to(self.device)
+                    
+                    loss = self.compute_loss(emg_data, angle_data, y)
+                    test_loss += loss.item()
+                    
+                    # NEW: Collect raw inputs
+                    all_emg_scalograms.append(emg_data.cpu().numpy())
+                    all_angle_histories.append(angle_data.cpu().numpy())
+                    
+                    # Retrieve predictions (and uncertainty if applicable)
+                    preds = self.get_predictions(emg_data, angle_data, return_std=True)
+                    
+                    if isinstance(preds, tuple):
+                        out, std = preds
+                        all_stds.append(std.cpu().numpy())
+                    else:
+                        out = preds
+                    
+                    if out.shape != y.shape:
+                        out = out.view_as(y)
+                    
+                    all_preds.append(out.cpu().numpy())
+                    all_labels.append(y.cpu().numpy())
+        
+        finally:
+            for handle in hook_handles:
+                handle.remove()
 
         # Keep predictions as 2D arrays: (n_samples, n_angles)
         all_preds = np.concatenate(all_preds)  # Shape: (n_samples, n_angles)
         all_labels = np.concatenate(all_labels)  # Shape: (n_samples, n_angles)
         
+        # NEW: Concatenate collected data
+        all_emg_scalograms = np.concatenate(all_emg_scalograms)
+        all_angle_histories = np.concatenate(all_angle_histories)
+        all_features = np.concatenate(all_features)
+        
         n_samples, n_angles = all_preds.shape
+        n_channels, time_steps, n_freq_scales = all_emg_scalograms.shape[1:]
+        fusion_hidden_dim = all_features.shape[1]
         
         # Generate angle names if not provided
         if angle_names is None:
             angle_names = [f"angle_{i}" for i in range(n_angles)]
+
+        # ============================================================
+        # SAVE EXTRACTED DATA AND INPUTS (NEW)
+        # ============================================================
+        emg_path = os.path.join(save_dir, f"{prefix}_emg_scalograms.npy")
+        np.save(emg_path, all_emg_scalograms.astype(np.float32))
+        logger.info(f"EMG scalograms saved to: {emg_path}")
+        logger.info(f"  Shape: {all_emg_scalograms.shape} (n_samples={n_samples}, n_channels={n_channels}, time={time_steps}, freq_scales={n_freq_scales})")
+        
+        angle_path = os.path.join(save_dir, f"{prefix}_angle_histories.npy")
+        np.save(angle_path, all_angle_histories.astype(np.float32))
+        logger.info(f"Angle histories saved to: {angle_path}")
+        logger.info(f"  Shape: {all_angle_histories.shape} (n_samples={n_samples}, n_angles={n_angles}, time={time_steps})")
+        
+        features_df = pd.DataFrame(
+            all_features,
+            columns=[f"feature_{i}" for i in range(fusion_hidden_dim)]
+        )
+        features_csv_path = os.path.join(save_dir, f"{prefix}_features.csv")
+        features_df.to_csv(features_csv_path, index=False)
+        logger.info(f"Extracted features saved to: {features_csv_path}")
+        logger.info(f"  Shape: {all_features.shape} (n_samples={n_samples}, fusion_hidden_dim={fusion_hidden_dim})")
 
         # ============================================================
         # GLOBAL METRICS (across all angles, flattened)
@@ -254,6 +315,26 @@ class BaseTrainer:
             "angle_names": angle_names,
             "n_samples": int(n_samples),
             "n_angles": int(n_angles),
+            "data_shapes": {  # NEW: Document saved data shapes
+                "emg_scalograms": {
+                    "shape": list(all_emg_scalograms.shape),
+                    "dtype": "float32",
+                    "file": f"{prefix}_emg_scalograms.npy",
+                    "description": "EMG wavelet scalogram (time-frequency representation per channel)"
+                },
+                "angle_histories": {
+                    "shape": list(all_angle_histories.shape),
+                    "dtype": "float32",
+                    "file": f"{prefix}_angle_histories.npy",
+                    "description": "Joint angle time series during input window"
+                },
+                "features": {
+                    "shape": list(all_features.shape),
+                    "dtype": "float32",
+                    "file": f"{prefix}_features.csv",
+                    "description": "Extracted features from DualBackbone fusion layer"
+                }
+            },
             "global": {
                 "objective_name": objective_name,
                 "objective_loss": float(avg_test_objective_loss),
