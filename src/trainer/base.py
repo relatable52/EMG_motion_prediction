@@ -106,7 +106,7 @@ class BaseTrainer:
         logger.info(f"\nTraining complete. Best Val Loss: {best_val_loss:.4f} at epoch {best_epoch}")
         return self.history
 
-    def test(self, save_dir="results", prefix="model", angle_names=None, export_features_only=False):
+    def test(self, save_dir="results", prefix="model", angle_names=None, export_features_only=False, save_raw_inputs=True):
         """
         Test the model and save predictions, extracted features, inputs, and metrics.
         
@@ -117,8 +117,10 @@ class BaseTrainer:
         - {prefix}_angle_histories.npy: angle histories with shape (n_samples, n_angles, time)
         - {prefix}_metrics.yaml: evaluation metrics with data shape documentation
 
-        If export_features_only is True, only the feature hook and input dumps are written.
+        If export_features_only is True, only the feature hook and optional input dumps are written.
         Predictions, labels, and metrics are not accumulated in memory.
+
+        If save_raw_inputs is False, skip saving raw EMG scalograms and angle histories.
         """
         self.model.eval()
         test_loss = 0.0
@@ -131,8 +133,8 @@ class BaseTrainer:
         os.makedirs(save_dir, exist_ok=True)
 
         total_samples = len(self.test_loader.dataset)
-        emg_path = os.path.join(save_dir, f"{prefix}_emg_scalograms.npy")
-        angle_path = os.path.join(save_dir, f"{prefix}_angle_histories.npy")
+        emg_path = os.path.join(save_dir, f"{prefix}_emg_scalograms.npy") if save_raw_inputs else None
+        angle_path = os.path.join(save_dir, f"{prefix}_angle_histories.npy") if save_raw_inputs else None
         features_csv_path = os.path.join(save_dir, f"{prefix}_features.csv")
 
         # Disk-backed arrays avoid storing full test tensors in RAM.
@@ -182,30 +184,32 @@ class BaseTrainer:
                     angle_data = angle_data.to(self.device)
                     y = y.to(self.device)
 
-                    emg_np = emg_data.cpu().numpy().astype(np.float32, copy=False)
-                    angle_np = angle_data.cpu().numpy().astype(np.float32, copy=False)
-                    batch_size = emg_np.shape[0]
-
-                    if emg_memmap is None:
-                        emg_shape = (total_samples,) + tuple(emg_np.shape[1:])
-                        emg_memmap = np.lib.format.open_memmap(
-                            emg_path,
-                            mode="w+",
-                            dtype=np.float32,
-                            shape=emg_shape,
-                        )
-                    if angle_memmap is None:
-                        angle_shape = (total_samples,) + tuple(angle_np.shape[1:])
-                        angle_memmap = np.lib.format.open_memmap(
-                            angle_path,
-                            mode="w+",
-                            dtype=np.float32,
-                            shape=angle_shape,
-                        )
-
+                    batch_size = emg_data.shape[0]
                     end_offset = sample_offset + batch_size
-                    emg_memmap[sample_offset:end_offset] = emg_np
-                    angle_memmap[sample_offset:end_offset] = angle_np
+
+                    if save_raw_inputs:
+                        emg_np = emg_data.cpu().numpy().astype(np.float32, copy=False)
+                        angle_np = angle_data.cpu().numpy().astype(np.float32, copy=False)
+
+                        if emg_memmap is None:
+                            emg_shape = (total_samples,) + tuple(emg_np.shape[1:])
+                            emg_memmap = np.lib.format.open_memmap(
+                                emg_path,
+                                mode="w+",
+                                dtype=np.float32,
+                                shape=emg_shape,
+                            )
+                        if angle_memmap is None:
+                            angle_shape = (total_samples,) + tuple(angle_np.shape[1:])
+                            angle_memmap = np.lib.format.open_memmap(
+                                angle_path,
+                                mode="w+",
+                                dtype=np.float32,
+                                shape=angle_shape,
+                            )
+
+                        emg_memmap[sample_offset:end_offset] = emg_np
+                        angle_memmap[sample_offset:end_offset] = angle_np
                     
                     capture_state["enabled"] = True
                     if export_features_only:
@@ -240,19 +244,26 @@ class BaseTrainer:
             if angle_memmap is not None:
                 del angle_memmap
 
-        if emg_shape is None or angle_shape is None:
+        if sample_offset == 0:
             raise RuntimeError("No test batches were processed; cannot save test artifacts.")
 
-        n_channels, time_steps, n_freq_scales = emg_shape[1:]
+        n_channels = time_steps = n_freq_scales = None
+        if save_raw_inputs:
+            if emg_shape is None or angle_shape is None:
+                raise RuntimeError("Raw input saving was enabled, but no raw input artifacts were produced.")
+            n_channels, time_steps, n_freq_scales = emg_shape[1:]
         fusion_hidden_dim = capture_state["feature_dim"]
         features_shape = [capture_state["written"], fusion_hidden_dim] if fusion_hidden_dim is not None else None
 
         if export_features_only:
             logger.info(f"\nFeature export complete for prefix '{prefix}'.")
-            logger.info(f"EMG scalograms saved to: {emg_path}")
-            logger.info(f"  Shape: {emg_shape}")
-            logger.info(f"Angle histories saved to: {angle_path}")
-            logger.info(f"  Shape: {angle_shape}")
+            if save_raw_inputs:
+                logger.info(f"EMG scalograms saved to: {emg_path}")
+                logger.info(f"  Shape: {emg_shape}")
+                logger.info(f"Angle histories saved to: {angle_path}")
+                logger.info(f"  Shape: {angle_shape}")
+            else:
+                logger.info("Raw inputs were not saved (save_raw_inputs=False).")
             if features_shape is not None:
                 logger.info(f"Extracted features saved to: {features_csv_path}")
                 logger.info(f"  Shape: {features_shape}")
@@ -277,11 +288,14 @@ class BaseTrainer:
         # ============================================================
         # SAVE EXTRACTED DATA AND INPUTS (NEW)
         # ============================================================
-        logger.info(f"EMG scalograms saved to: {emg_path}")
-        logger.info(f"  Shape: {emg_shape} (n_samples={n_samples}, n_channels={n_channels}, time={time_steps}, freq_scales={n_freq_scales})")
+        if save_raw_inputs:
+            logger.info(f"EMG scalograms saved to: {emg_path}")
+            logger.info(f"  Shape: {emg_shape} (n_samples={n_samples}, n_channels={n_channels}, time={time_steps}, freq_scales={n_freq_scales})")
 
-        logger.info(f"Angle histories saved to: {angle_path}")
-        logger.info(f"  Shape: {angle_shape} (n_samples={n_samples}, n_angles={n_angles}, time={time_steps})")
+            logger.info(f"Angle histories saved to: {angle_path}")
+            logger.info(f"  Shape: {angle_shape} (n_samples={n_samples}, n_angles={n_angles}, time={time_steps})")
+        else:
+            logger.info("Raw inputs were not saved (save_raw_inputs=False).")
 
         if features_shape is not None:
             logger.info(f"Extracted features saved to: {features_csv_path}")
@@ -395,15 +409,17 @@ class BaseTrainer:
             "n_angles": int(n_angles),
             "data_shapes": {  # NEW: Document saved data shapes
                 "emg_scalograms": {
-                    "shape": list(emg_shape),
+                    "shape": list(emg_shape) if emg_shape is not None else None,
                     "dtype": "float32",
-                    "file": f"{prefix}_emg_scalograms.npy",
+                    "file": f"{prefix}_emg_scalograms.npy" if save_raw_inputs else None,
+                    "saved": bool(save_raw_inputs),
                     "description": "EMG wavelet scalogram (time-frequency representation per channel)"
                 },
                 "angle_histories": {
-                    "shape": list(angle_shape),
+                    "shape": list(angle_shape) if angle_shape is not None else None,
                     "dtype": "float32",
-                    "file": f"{prefix}_angle_histories.npy",
+                    "file": f"{prefix}_angle_histories.npy" if save_raw_inputs else None,
+                    "saved": bool(save_raw_inputs),
                     "description": "Joint angle time series during input window"
                 },
                 "features": {

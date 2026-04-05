@@ -101,6 +101,10 @@ def parse_args():
                        help='Save best model based on validation loss')
     parser.add_argument('--save_last_model', action='store_true', default=None,
                        help='Save final model state')
+    parser.add_argument('--save_raw_inputs', action='store_true', default=None,
+                       help='Save raw EMG/angle input arrays during test export')
+    parser.add_argument('--no_save_raw_inputs', dest='save_raw_inputs', action='store_false',
+                       help='Skip saving raw EMG/angle input arrays to reduce disk usage')
     
     return parser.parse_args()
 
@@ -395,7 +399,8 @@ def main():
     test_results = trainer.test(
         save_dir=str(experiment_dir), 
         prefix="test",
-        angle_names=config['target_angle_name']
+        angle_names=config['target_angle_name'],
+        save_raw_inputs=config.get('save_raw_inputs', True)
     )
     
     logger.info("\n" + "=" * 80)

@@ -129,6 +129,7 @@ def merge_config_with_args(config: Dict[str, Any], args: Any) -> Dict[str, Any]:
         'log_interval': 'log_interval',
         'save_best_model': 'save_best_model',
         'save_last_model': 'save_last_model',
+        'save_raw_inputs': 'save_raw_inputs',
     }
     
     # Override with CLI arguments if provided
