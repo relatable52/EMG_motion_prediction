@@ -106,7 +106,7 @@ class BaseTrainer:
         logger.info(f"\nTraining complete. Best Val Loss: {best_val_loss:.4f} at epoch {best_epoch}")
         return self.history
 
-    def test(self, save_dir="results", prefix="model", angle_names=None):
+    def test(self, save_dir="results", prefix="model", angle_names=None, export_features_only=False):
         """
         Test the model and save predictions, extracted features, inputs, and metrics.
         
@@ -116,13 +116,16 @@ class BaseTrainer:
         - {prefix}_emg_scalograms.npy: EMG scalograms with shape (n_samples, n_channels, time, freq_scales)
         - {prefix}_angle_histories.npy: angle histories with shape (n_samples, n_angles, time)
         - {prefix}_metrics.yaml: evaluation metrics with data shape documentation
+
+        If export_features_only is True, only the feature hook and input dumps are written.
+        Predictions, labels, and metrics are not accumulated in memory.
         """
         self.model.eval()
         test_loss = 0.0
-        
-        all_preds = []
-        all_labels = []
-        all_stds = [] # Only populated if using Uncertainty model
+
+        all_preds = [] if not export_features_only else None
+        all_labels = [] if not export_features_only else None
+        all_stds = [] if not export_features_only else None # Only populated if using Uncertainty model
         hook_handles = []
         
         os.makedirs(save_dir, exist_ok=True)
@@ -204,25 +207,28 @@ class BaseTrainer:
                     emg_memmap[sample_offset:end_offset] = emg_np
                     angle_memmap[sample_offset:end_offset] = angle_np
                     
-                    loss = self.compute_loss(emg_data, angle_data, y)
-                    test_loss += loss.item()
-
-                    # Retrieve predictions (and uncertainty if applicable)
                     capture_state["enabled"] = True
-                    preds = self.get_predictions(emg_data, angle_data, return_std=True)
-                    capture_state["enabled"] = False
-                    
-                    if isinstance(preds, tuple):
-                        out, std = preds
-                        all_stds.append(std.cpu().numpy())
+                    if export_features_only:
+                        _ = self.get_predictions(emg_data, angle_data, return_std=False)
                     else:
-                        out = preds
-                    
-                    if out.shape != y.shape:
-                        out = out.view_as(y)
-                    
-                    all_preds.append(out.cpu().numpy())
-                    all_labels.append(y.cpu().numpy())
+                        loss = self.compute_loss(emg_data, angle_data, y)
+                        test_loss += loss.item()
+
+                        # Retrieve predictions (and uncertainty if applicable)
+                        preds = self.get_predictions(emg_data, angle_data, return_std=True)
+                        
+                        if isinstance(preds, tuple):
+                            out, std = preds
+                            all_stds.append(std.cpu().numpy())
+                        else:
+                            out = preds
+                        
+                        if out.shape != y.shape:
+                            out = out.view_as(y)
+                        
+                        all_preds.append(out.cpu().numpy())
+                        all_labels.append(y.cpu().numpy())
+                    capture_state["enabled"] = False
 
                     sample_offset = end_offset
         
@@ -234,6 +240,26 @@ class BaseTrainer:
             if angle_memmap is not None:
                 del angle_memmap
 
+        if emg_shape is None or angle_shape is None:
+            raise RuntimeError("No test batches were processed; cannot save test artifacts.")
+
+        n_channels, time_steps, n_freq_scales = emg_shape[1:]
+        fusion_hidden_dim = capture_state["feature_dim"]
+        features_shape = [capture_state["written"], fusion_hidden_dim] if fusion_hidden_dim is not None else None
+
+        if export_features_only:
+            logger.info(f"\nFeature export complete for prefix '{prefix}'.")
+            logger.info(f"EMG scalograms saved to: {emg_path}")
+            logger.info(f"  Shape: {emg_shape}")
+            logger.info(f"Angle histories saved to: {angle_path}")
+            logger.info(f"  Shape: {angle_shape}")
+            if features_shape is not None:
+                logger.info(f"Extracted features saved to: {features_csv_path}")
+                logger.info(f"  Shape: {features_shape}")
+            else:
+                logger.info("Extracted features were not saved (fusion hook unavailable).")
+            return None, None
+
         # Keep predictions as 2D arrays: (n_samples, n_angles)
         all_preds = np.concatenate(all_preds)  # Shape: (n_samples, n_angles)
         all_labels = np.concatenate(all_labels)  # Shape: (n_samples, n_angles)
@@ -243,13 +269,6 @@ class BaseTrainer:
             logger.warning(
                 f"Sample count mismatch while writing arrays: written={sample_offset}, predictions={n_samples}"
             )
-
-        if emg_shape is None or angle_shape is None:
-            raise RuntimeError("No test batches were processed; cannot save test artifacts.")
-
-        n_channels, time_steps, n_freq_scales = emg_shape[1:]
-        fusion_hidden_dim = capture_state["feature_dim"]
-        features_shape = [capture_state["written"], fusion_hidden_dim] if fusion_hidden_dim is not None else None
         
         # Generate angle names if not provided
         if angle_names is None:
