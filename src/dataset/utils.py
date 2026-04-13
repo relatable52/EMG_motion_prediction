@@ -75,7 +75,22 @@ def _get_data_files() -> dict:
 
 DATA_FILES = _get_data_files()
 
-TRAIN_FILES, TEST_FILES = train_test_split(DATA_FILES, test_size=0.2, random_state=42)
+HARDCODED_TEST_KEYS = {
+    ('AB09', 'normal_walk_1_1-2'),
+    ('AB02', 'normal_walk_1_0-6'),
+    ('AB05', 'normal_walk_1_2-5'),
+    ('AB11', 'normal_walk_1_1-2'),
+    ('AB13', 'normal_walk_1_1-8')
+}
+
+TRAIN_FILES, TEST_FILES = [], []
+
+for file_info in DATA_FILES:
+    key = (file_info['subject'], file_info['activity'])
+    if key in HARDCODED_TEST_KEYS:
+        TEST_FILES.append(file_info)
+    else:
+        TRAIN_FILES.append(file_info)
 
 def _compute_wavelet_scalogram(channel_data, fs=1000, output_fs=100, freq_min=5, freq_max=450, n_scales=40):
     """
