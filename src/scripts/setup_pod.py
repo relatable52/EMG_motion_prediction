@@ -6,7 +6,7 @@ def setup_environment():
     
     # 1. Download Dataset via kagglehub
     print("Downloading dataset using kagglehub...")
-    dataset_path = kagglehub.dataset_download('geeeeese/ga-tech-emg-dataset/version/1')
+    dataset_path = kagglehub.dataset_download('geeeeese/ga-tech-emg-dataset/versions/1')
     print(f"\nDataset downloaded to: {dataset_path}")
     
     # 2. Generate the .env file automatically
