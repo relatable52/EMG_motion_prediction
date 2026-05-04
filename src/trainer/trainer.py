@@ -140,10 +140,14 @@ class Trainer:
         # In full batch, the loss is automatically averaged
         return loss.item()
 
-    def predict(self, test_loader: DataLoader) -> Dict[str, torch.Tensor]:
+    def predict(self, test_loader: DataLoader, save_dir: Optional[str] = None) -> Dict[str, torch.Tensor]:
         """
         Runs inference, standardizes outputs into (Mean, Variance),
         and safely moves data to CPU immediately to prevent GPU Memory Leaks.
+        
+        Args:
+            test_loader: DataLoader for test set
+            save_dir: Optional directory to save prediction results
         """
         self.model.eval()
         if self.model_type == 'gaussian_process':
@@ -212,6 +216,13 @@ class Trainer:
             'inference_time_ms': avg_infer_ms,
             'model_type': self.model_type
         }
+        
+        # Save results if save_dir provided
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
+            results_path = os.path.join(save_dir, f"{self.model_type}_predictions.pt")
+            torch.save(results, results_path)
+            logger.info(f"Predictions saved to: {results_path}")
         
         logger.info(f"Inference complete! Average latency per sample: {avg_infer_ms:.3f} ms")
         return results

@@ -7,7 +7,7 @@ from model.predictor import (
     ProbabilisticRegressor,
     DeepEnsembleRegressor,
     GPFeatureExtractor,
-    DKLGaussianProcess
+    DKLGaussianProcessRegressor
 )
 import gpytorch
 
@@ -97,7 +97,7 @@ def create_gp_model(config: ExperimentConfig, train_x: torch.Tensor,
         num_tasks=model_cfg.output_dim
     )
     
-    model = DKLGaussianProcess(
+    model = DKLGaussianProcessRegressor(
         train_x=train_x,
         train_y=train_y,
         likelihood=likelihood,

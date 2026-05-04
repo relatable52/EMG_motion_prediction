@@ -2,16 +2,53 @@
 Script to train a single model based on the provided configuration.
 """
 import os
-from dataclasses import fields
+import json
+from dataclasses import fields, asdict
 
 import torch
 from torch.utils.data import DataLoader
 from argparse import ArgumentParser
 
-from config.config import ExperimentConfig, ModelConfig, TrainConfig
+from config.config import ExperimentConfig, ModelConfig, TrainConfig, DataConfig
 from data.dataset import PredictionDataset
-from model.factory import create_model
+from model.factory import create_model, create_gp_model
 from trainer.trainer import Trainer
+
+def extract_full_dataset(dataloader, max_samples=None):
+    """
+    Extracts all samples from a DataLoader into full tensors (CPU).
+    
+    Args:
+        dataloader: PyTorch DataLoader
+        max_samples: If set, randomly subsamples to this many samples
+        
+    Returns:
+        full_x: All EMG features of shape (Total_Samples, Channels, Time, Freq)
+        full_y: All target labels of shape (Total_Samples, Output_Dim)
+    """
+    all_x = []
+    all_y = []
+    
+    print("Extracting full dataset from DataLoader into RAM...")
+    
+    with torch.no_grad():
+        for emg_sample, _, label in dataloader:
+            all_x.append(emg_sample)
+            all_y.append(label)
+    
+    full_x = torch.cat(all_x, dim=0)
+    full_y = torch.cat(all_y, dim=0)
+    
+    # Optional subsampling to avoid memory issues
+    if max_samples and full_x.size(0) > max_samples:
+        idx = torch.randperm(full_x.size(0))[:max_samples]
+        full_x = full_x[idx]
+        full_y = full_y[idx]
+        print(f"Subsampled to {max_samples} samples")
+    
+    print(f"Extraction complete! X shape: {full_x.shape}, Y shape: {full_y.shape}")
+    
+    return full_x, full_y
 
 def parse_args():
     parser = ArgumentParser(description="Train a single model based on the provided configuration.")
@@ -73,11 +110,63 @@ def main():
     train_dataset = PredictionDataset(mode='train', prediction_horizon=config.data.prediction_horizon, output_fs=config.data.output_fs)
     train_loader = DataLoader(train_dataset, batch_size=config.train.batch_size, shuffle=True)
     
-    # Create model based on configuration
-    model = create_model(config).to(config.train.device)
+    test_dataset = PredictionDataset(mode='test', prediction_horizon=config.data.prediction_horizon, output_fs=config.data.output_fs)
+    test_loader = DataLoader(test_dataset, batch_size=config.train.batch_size, shuffle=False)
     
-    # Initialize trainer
-    trainer = Trainer(model=model, config=config)
+    # Experiment save directory
+    save_dir = os.path.join(config.env.results_dir, config.exp_name)
     
-    # Train the model
-    trainer.train(train_loader)
+    # Create model based on paradigm
+    if config.model.paradigm == 'gp':
+        # For GP, need to extract training data first
+        feature_extractor = create_model(config)
+        
+        # Extract full training data and subsample to avoid memory issues
+        train_x, train_y = extract_full_dataset(train_loader, max_samples=2000)
+        
+        # Create GP model and likelihood
+        model, likelihood = create_gp_model(config, train_x, train_y, feature_extractor)
+        
+        # Initialize trainer with GP model and likelihood
+        trainer = Trainer(model=model, config=config, likelihood=likelihood)
+        
+        # Train using full-batch GP training
+        train_history = trainer.train(gp_data=(train_x, train_y))
+        
+        # Run inference and save predictions
+        inference_results = trainer.predict(test_loader, save_dir=save_dir)
+    else:
+        # For non-GP models, create model normally
+        model = create_model(config).to(config.train.device)
+        
+        # Initialize trainer
+        trainer = Trainer(model=model, config=config)
+        
+        # Train using mini-batch training
+        train_history = trainer.train(train_loader)
+        
+        # Run inference and save predictions
+        inference_results = trainer.predict(test_loader, save_dir=save_dir)
+    
+    # Save config and training history
+    os.makedirs(save_dir, exist_ok=True)
+    
+    # Save config as JSON
+    config_dict = asdict(config)
+    config_path = os.path.join(save_dir, 'config.json')
+    with open(config_path, 'w') as f:
+        json.dump(config_dict, f, indent=2, default=str)
+    print(f"Config saved to: {config_path}")
+    
+    # Save training history as JSON
+    history_path = os.path.join(save_dir, 'train_history.json')
+    history_dict = {k: [float(v) for v in vs] for k, vs in train_history.items()}
+    with open(history_path, 'w') as f:
+        json.dump(history_dict, f, indent=2)
+    print(f"Training history saved to: {history_path}")
+    
+    print(f"\nTraining and inference complete!")
+    print(f"Results saved to: {save_dir}")
+
+if __name__ == '__main__':
+    main()
