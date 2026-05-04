@@ -5,7 +5,7 @@ import pandas as pd
 from torch.utils.data import Dataset
 from dotenv import load_dotenv
 
-from dataset.utils import load_and_process_data
+from data.utils import load_and_process_data
 
 load_dotenv()
 
