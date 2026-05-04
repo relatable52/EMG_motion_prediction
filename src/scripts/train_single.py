@@ -95,7 +95,7 @@ def main():
             setattr(config.train, field.name, arg_value)
 
     # Override DataConfig values from command-line arguments
-    for field in fields(ExperimentConfig.data):
+    for field in fields(DataConfig):
         arg_name = f'data_{field.name}'
         arg_value = getattr(args, arg_name, None)
         if arg_value is not None:
