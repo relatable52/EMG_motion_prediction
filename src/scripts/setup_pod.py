@@ -4,9 +4,21 @@ import kagglehub
 def setup_environment():
     print("Starting Data Download & Environment Setup...")
     
-    # 1. Download Dataset via kagglehub
-    print("Downloading dataset using kagglehub...")
-    dataset_path = kagglehub.dataset_download('geeeeese/ga-tech-emg-dataset/versions/1')
+   # Use RunPod's massive persistent storage volume
+    runpod_workspace = '/workspace'
+    
+    # Create an explicit dataset directory there
+    target_data_dir = os.path.join(runpod_workspace, 'gatech-emg-dataset')
+    os.makedirs(target_data_dir, exist_ok=True)
+    
+    # 1. Download Dataset via kagglehub using output_dir
+    print(f"Downloading dataset using kagglehub to {target_data_dir}...")
+    
+    # path will be exactly what you pass to output_dir
+    dataset_path = kagglehub.dataset_download(
+        'geeeeese/ga-tech-emg-dataset/versions/1', 
+        output_dir=target_data_dir
+    )
     print(f"\nDataset downloaded to: {dataset_path}")
     
     # 2. Generate the .env file automatically
