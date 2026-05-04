@@ -409,7 +409,7 @@ def load_and_process_data(mode='train', use_cache=True, cache_dir=None, output_f
     
     # Save to cache
     if use_cache:
-        cache_path = _get_cache_path(mode, cache_dir)
+        cache_path = _get_cache_path(mode, n_scales, cache_dir)  # Include n_scales in cache path
         _save_to_cache(cache_path, combined_data, channel_names, angle_names, frequencies, output_fs)
 
     return combined_data, channel_names, angle_names, frequencies, output_fs

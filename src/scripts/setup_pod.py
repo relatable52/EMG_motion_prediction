@@ -22,11 +22,15 @@ def setup_environment():
     print(f"\nDataset downloaded to: {dataset_path}")
     
     # 2. Generate the .env file automatically
+    # Use absolute paths to ensure cache is found across different working directories
+    cache_dir = os.path.join(runpod_workspace, 'cache')
+    os.makedirs(cache_dir, exist_ok=True)
+    
     env_content = f"""DATA_DIR={dataset_path}
-RESULTS_DIR=results
-LOG_DIR=logs
-MODEL_DIR=models
-CACHE_DIR=cache
+RESULTS_DIR={os.path.join(runpod_workspace, 'results')}
+LOG_DIR={os.path.join(runpod_workspace, 'logs')}
+MODEL_DIR={os.path.join(runpod_workspace, 'models')}
+CACHE_DIR={cache_dir}
 EMG_FREQUENCY=2000
 ANGLE_FREQUENCY=200
 """
