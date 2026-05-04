@@ -28,7 +28,7 @@ class Trainer:
         self.model_type = self.config.model.paradigm
         
         # 1. Optimizers
-        if self.model_type == 'gaussian_process' and self.likelihood is not None:
+        if self.model_type == 'gp' and self.likelihood is not None:
             # GP needs gradients flowing through both the model and the likelihood
             self.optimizer = optim.Adam(
                 list(self.model.parameters()) + list(self.likelihood.parameters()),
@@ -45,7 +45,7 @@ class Trainer:
         self.mse_loss = nn.MSELoss()
         self.gaussian_nll_loss = nn.GaussianNLLLoss(eps=1e-6, reduction='mean') # For Probabilistic target
         
-        if self.model_type == 'gaussian_process':
+        if self.model_type == 'gp':
             self.mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.likelihood, self.model)
 
     def train(self, train_loader: Optional[DataLoader] = None, 
@@ -66,7 +66,7 @@ class Trainer:
         
         for epoch in range(1, self.config.train.epochs + 1):
             # Route to correct epoch logic based on model type
-            if self.model_type == 'gaussian_process':
+            if self.model_type == 'gp':
                 assert gp_data is not None, "GP requires full-batch gp_data tuple (X, Y)!"
                 avg_loss = self._train_epoch_gp(gp_data, epoch)
             else:
@@ -150,7 +150,7 @@ class Trainer:
             save_dir: Optional directory to save prediction results
         """
         self.model.eval()
-        if self.model_type == 'gaussian_process':
+        if self.model_type == 'gp':
             self.likelihood.eval()
         elif self.model_type == 'mc_dropout':
             self.model.train() # Must keep dropout layers active to introduce stochasticity!
@@ -191,7 +191,7 @@ class Trainer:
                     pred = torch.mean(batch_passes, dim=0)
                     var = torch.var(batch_passes, dim=0)
                     
-                elif self.model_type == 'gaussian_process':
+                elif self.model_type == 'gp':
                     emg_sample_flat = emg_sample.view(emg_sample.size(0), -1)
                     predictive_dist = self.likelihood(self.model(emg_sample_flat))
                     pred = predictive_dist.mean
@@ -231,7 +231,7 @@ class Trainer:
         save_path = os.path.join(save_dir, f"{self.model_type}_final.pth")
         
         # GP likelihood covariance limits require it to be saved alongside CNN parameters 
-        if self.model_type == 'gaussian_process':
+        if self.model_type == 'gp':
             torch.save({
                 'model_state': self.model.state_dict(),
                 'likelihood_state': self.likelihood.state_dict()
