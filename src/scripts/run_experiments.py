@@ -6,7 +6,8 @@ import os
 import subprocess
 
 # Path to the training script relative to the workspace root
-TRAIN_SCRIPT = "src/scripts/train_single.py"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+TRAIN_SCRIPT = os.path.join(SCRIPT_DIR, "train_single.py")
 
 # Directory to save logs
 LOG_DIR = "experiment_logs"
@@ -16,7 +17,7 @@ def run_experiment(exp_name, kwargs):
     """Utility to run train_single.py with given kwargs sequentially."""
     print(f"\n{'='*10}\nStarting Experiment: {exp_name}\n{'='*10}")
     
-    cmd = ["python", TRAIN_SCRIPT, "--exp-name", exp_name]
+    cmd = ["uv", "run", "python", TRAIN_SCRIPT, "--exp-name", exp_name]
     
     for key, value in kwargs.items():
         cmd.extend([f"--{key}", str(value)])
