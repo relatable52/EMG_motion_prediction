@@ -251,12 +251,13 @@ def _combine_emg_angle_data(emg_data_dict, angle_df, output_fs=100):
     }
 
 
-def _get_cache_path(mode: str, cache_dir: str = None) -> Path:
+def _get_cache_path(mode: str, n_scales: int, cache_dir: str = None) -> Path:
     """
     Get the cache file path for the given mode.
     
     Args:
         mode (str): 'train' or 'test' mode.
+        n_scales (int): Number of scales for the wavelet transform.
         cache_dir (str, optional): Custom cache directory path. If None, uses CACHE_DIR.
     
     Returns:
@@ -264,8 +265,7 @@ def _get_cache_path(mode: str, cache_dir: str = None) -> Path:
     """
     cache_path = Path(cache_dir if cache_dir is not None else CACHE_DIR)
     cache_path.mkdir(parents=True, exist_ok=True)
-    return cache_path / f"processed_data_{mode}.pkl"
-
+    return cache_path / f"processed_data_{mode}_{n_scales}.pkl"
 
 def _save_to_cache(cache_path: Path, combined_data: list, channel_names: list, angle_names: list, frequencies: np.ndarray, output_fs: int):
     """
@@ -363,7 +363,7 @@ def load_and_process_data(mode='train', use_cache=True, cache_dir=None, output_f
     
     # Try to load from cache
     if use_cache:
-        cache_path = _get_cache_path(mode, cache_dir)
+        cache_path = _get_cache_path(mode, n_scales, cache_dir)
         
         if cache_path.exists():
             logger.info(f"Loading processed data from cache: {cache_path.name}")
@@ -449,7 +449,7 @@ def clear_cache(mode: str = None, cache_dir: str = None):
         except Exception as e:
             logger.warning(f"Failed to delete {cache_file.name}: {e}")
     
-    logger.info(f"✓ Cleared {len(cache_files)} cache file(s).")
+    logger.info(f"Cleared {len(cache_files)} cache file(s).")
 
 
 if __name__ == "__main__":

@@ -122,7 +122,7 @@ def main():
         feature_extractor = create_model(config)
         
         # Extract full training data and subsample to avoid memory issues
-        train_x, train_y = extract_full_dataset(train_loader, max_samples=2000)
+        train_x, train_y = extract_full_dataset(train_loader, max_samples=8000)
         
         # Create GP model and likelihood
         model, likelihood = create_gp_model(config, train_x, train_y, feature_extractor)
