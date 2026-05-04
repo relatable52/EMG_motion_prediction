@@ -81,7 +81,7 @@ HARDCODED_TEST_KEYS = {
     ('AB05', 'normal_walk_1_2-5'),
     ('AB11', 'normal_walk_1_1-2'),
     ('AB13', 'normal_walk_1_1-8')
-}
+} # Manually selected test files for representative evaluation
 
 TRAIN_FILES, TEST_FILES = [], []
 

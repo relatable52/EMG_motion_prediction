@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 
-
 class EMGScalogramBackbone(nn.Module):
     """
     Backbone for processing EMG scalogram data (time-frequency representations).
@@ -78,8 +77,6 @@ class EMGScalogramBackbone(nn.Module):
             features = lstm_out[:, -1, :]  # Take last timestep
         
         return features
-
-
 class AngleHistoryBackbone(nn.Module):
     """
     Backbone for processing angle history data (simple 1D temporal sequences).
@@ -126,7 +123,6 @@ class AngleHistoryBackbone(nn.Module):
             features = x[:, :, -1]  # Take last timestep
         
         return features
-
 
 class DualBackbone(nn.Module):
     """
