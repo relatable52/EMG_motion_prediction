@@ -5,19 +5,25 @@ Runs experiments sequentially to avoid memory overload.
 import os
 import subprocess
 
-# Path to the training script relative to the workspace root
+# 1. This is: /workspace/your-repo/src/scripts
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-TRAIN_SCRIPT = os.path.join(SCRIPT_DIR, "train_single.py")
 
-# Directory to save logs
-LOG_DIR = "experiment_logs"
+# 2. Step up one level to get: /workspace/your-repo/src
+SRC_DIR = os.path.dirname(SCRIPT_DIR)
+
+# 3. Step up one more level to get the root: /workspace/your-repo
+WORKSPACE_DIR = os.path.dirname(SRC_DIR)
+
+# Directory to save logs (now safely placed in the root workspace)
+LOG_DIR = os.path.join(WORKSPACE_DIR, "experiment_logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 
 def run_experiment(exp_name, kwargs):
-    """Utility to run train_single.py with given kwargs sequentially."""
+    """Utility to run scripts.train_single with given kwargs sequentially."""
     print(f"\n{'='*10}\nStarting Experiment: {exp_name}\n{'='*10}")
     
-    cmd = ["uv", "run", "python", TRAIN_SCRIPT, "--exp-name", exp_name]
+    # 1. Changed to use module execution (-m scripts.train_single)
+    cmd = ["uv", "run", "python", "-m", "scripts.train_single", "--exp-name", exp_name]
     
     for key, value in kwargs.items():
         cmd.extend([f"--{key}", str(value)])
@@ -25,9 +31,14 @@ def run_experiment(exp_name, kwargs):
     log_path = os.path.join(LOG_DIR, f"{exp_name}_log.txt")
     print(f"Logging terminal output to: {log_path}")
     
-    # Run the subprocess synchronously (one at a time)
+    # 2. Run the subprocess synchronously from the SRC_DIR
     with open(log_path, "w") as log_file:
-        result = subprocess.run(cmd, stdout=log_file, stderr=subprocess.STDOUT)
+        result = subprocess.run(
+            cmd, 
+            stdout=log_file, 
+            stderr=subprocess.STDOUT,
+            cwd=SRC_DIR  # This forces the command to run from the 'src' folder
+        )
         
     if result.returncode != 0:
         print(f"EXPERIMENT FAILED: {exp_name} - Check {log_path}")
