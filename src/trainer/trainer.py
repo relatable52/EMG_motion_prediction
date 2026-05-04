@@ -25,7 +25,7 @@ class Trainer:
         if self.likelihood is not None:
             self.likelihood = self.likelihood.to(self.device)
             
-        self.model_type = self.config.model.model_type
+        self.model_type = self.config.model.paradigm
         
         # 1. Optimizers
         if self.model_type == 'gaussian_process' and self.likelihood is not None:
