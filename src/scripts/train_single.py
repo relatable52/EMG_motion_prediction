@@ -64,7 +64,7 @@ def parse_args():
                           help=f'Train {field.name}')
 
     # Auto-add fields from DataConfig
-    for field in fields(ExperimentConfig.data):
+    for field in fields(DataConfig):
         parser.add_argument(f'--data-{field.name.replace("_", "-")}', type=field.type, 
                           help=f'Data {field.name}')
     
