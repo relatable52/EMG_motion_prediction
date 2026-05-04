@@ -15,34 +15,24 @@ SRC_DIR = os.path.dirname(SCRIPT_DIR)
 # 3. Step up one more level to get the root: /workspace/your-repo
 WORKSPACE_DIR = os.path.dirname(SRC_DIR)
 
-# Directory to save logs (now safely placed in the root workspace)
-LOG_DIR = os.path.join(WORKSPACE_DIR, "experiment_logs")
-os.makedirs(LOG_DIR, exist_ok=True)
-
 def run_experiment(exp_name, kwargs):
     """Utility to run scripts.train_single with given kwargs sequentially."""
     print(f"\n{'='*10}\nStarting Experiment: {exp_name}\n{'='*10}")
     
     # 1. Changed to use module execution (-m scripts.train_single)
-    cmd = ["uv", "run", "python", "-m", "scripts.train_single", "--exp-name", exp_name]
+    cmd = ["uv", "run", "python", "-u", "-m", "scripts.train_single", "--exp-name", exp_name]
     
     for key, value in kwargs.items():
         cmd.extend([f"--{key}", str(value)])
         
-    log_path = os.path.join(LOG_DIR, f"{exp_name}_log.txt")
-    print(f"Logging terminal output to: {log_path}")
-    
-    # 2. Run the subprocess synchronously from the SRC_DIR
-    with open(log_path, "w") as log_file:
-        result = subprocess.run(
-            cmd, 
-            stdout=log_file, 
-            stderr=subprocess.STDOUT,
-            cwd=SRC_DIR  # This forces the command to run from the 'src' folder
-        )
+    # 2. Run the subprocess synchronously from the SRC_DIR, directly to terminal
+    result = subprocess.run(
+        cmd, 
+        cwd=SRC_DIR  # This forces the command to run from the 'src' folder
+    )
         
     if result.returncode != 0:
-        logger.error(f"EXPERIMENT FAILED: {exp_name} - Check {log_path}")
+        logger.error(f"EXPERIMENT FAILED: {exp_name}")
     else:
         logger.info(f"Finished {exp_name} successfully.")
         
