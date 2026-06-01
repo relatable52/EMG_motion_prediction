@@ -25,27 +25,27 @@ ACTIVITIES = [
     'normal_walk_1_1-8',
     'normal_walk_1_2-0',
     'normal_walk_1_2-5',
-    # 'normal_walk_1_shuffle',
-    # 'normal_walk_1_skip',
-    # 'incline_walk_1_down5',
-    # 'incline_walk_2_down10',
-    # 'incline_walk_1_up5',
-    # 'incline_walk_2_up10',
-    # 'walk_backward_1_0-6',
-    # 'walk_backward_1_0-8',
-    # 'walk_backward_1_1-0',
-    # 'weighted_walk_1_25lbs',
-    # 'stairs_1_1_up',
-    # 'stairs_1_2_down',
-    # 'stairs_1_3_up',
-    # 'stairs_1_4_down',
-    # 'stairs_1_5_up',
-    # 'stairs_1_6_down',
-    # 'stairs_1_7_up',
-    # 'stairs_1_8_down',
-    # 'stairs_1_9_up',
-    # 'stairs_1_10_down',
-    # 'tire_run_1'
+    'normal_walk_1_shuffle',
+    'normal_walk_1_skip',
+    'incline_walk_1_down5',
+    'incline_walk_2_down10',
+    'incline_walk_1_up5',
+    'incline_walk_2_up10',
+    'walk_backward_1_0-6',
+    'walk_backward_1_0-8',
+    'walk_backward_1_1-0',
+    'weighted_walk_1_25lbs',
+    'stairs_1_1_up',
+    'stairs_1_2_down',
+    'stairs_1_3_up',
+    'stairs_1_4_down',
+    'stairs_1_5_up',
+    'stairs_1_6_down',
+    'stairs_1_7_up',
+    'stairs_1_8_down',
+    'stairs_1_9_up',
+    'stairs_1_10_down',
+    'tire_run_1'
 ]
 SUBJECTS = [f'AB{i:02}' for i in range(1, 14)]
 
@@ -74,23 +74,83 @@ def _get_data_files() -> dict:
     return files
 
 DATA_FILES = _get_data_files()
-
 HARDCODED_TEST_KEYS = {
     ('AB09', 'normal_walk_1_1-2'),
     ('AB02', 'normal_walk_1_0-6'),
     ('AB05', 'normal_walk_1_2-5'),
     ('AB11', 'normal_walk_1_1-2'),
     ('AB13', 'normal_walk_1_1-8')
-} # Manually selected test files for representative evaluation
+} # Backwards-compatible default test files for representative evaluation
 
-TRAIN_FILES, TEST_FILES = [], []
 
-for file_info in DATA_FILES:
-    key = (file_info['subject'], file_info['activity'])
-    if key in HARDCODED_TEST_KEYS:
-        TEST_FILES.append(file_info)
-    else:
-        TRAIN_FILES.append(file_info)
+def resolve_split_files(file_index, split_strategy='single_holdout', n_folds=5, fold_index=0,
+                        test_subjects=None, test_activities=None, random_state=42):
+    """Resolve train/test file lists according to split configuration.
+
+    Args:
+        file_index (list): List of file_info dicts (DATA_FILES).
+        split_strategy (str): split strategy name.
+        n_folds (int): number of folds for k-fold strategies.
+        fold_index (int): index of fold to use (0-based).
+        test_subjects (list): explicit list of test subject IDs.
+        test_activities (list): explicit list of test activity names.
+        random_state (int): RNG seed for reproducible shuffles.
+
+    Returns:
+        train_files, test_files
+    """
+    # Helper to filter by lists
+    if test_subjects:
+        test_files = [f for f in file_index if f['subject'] in test_subjects]
+        train_files = [f for f in file_index if f['subject'] not in test_subjects]
+        return train_files, test_files
+
+    if test_activities:
+        test_files = [f for f in file_index if f['activity'] in test_activities]
+        train_files = [f for f in file_index if f['activity'] not in test_activities]
+        return train_files, test_files
+
+    # single_holdout default uses HARDCODED_TEST_KEYS for backwards compatibility
+    if split_strategy == 'single_holdout':
+        test_files = [f for f in file_index if (f['subject'], f['activity']) in HARDCODED_TEST_KEYS]
+        train_files = [f for f in file_index if (f['subject'], f['activity']) not in HARDCODED_TEST_KEYS]
+        return train_files, test_files
+
+    # subject_loso: leave-one-subject-out using fold_index as subject index
+    if split_strategy == 'subject_loso':
+        subjects = sorted(list({f['subject'] for f in file_index}))
+        if fold_index < 0 or fold_index >= len(subjects):
+            raise ValueError('fold_index out of range for subject_loso')
+        test_subject = subjects[fold_index]
+        test_files = [f for f in file_index if f['subject'] == test_subject]
+        train_files = [f for f in file_index if f['subject'] != test_subject]
+        return train_files, test_files
+
+    # subject_kfold: split subjects into k groups
+    if split_strategy == 'subject_kfold':
+        subjects = sorted(list({f['subject'] for f in file_index}))
+        rng = np.random.RandomState(random_state)
+        subjects_shuffled = subjects.copy()
+        rng.shuffle(subjects_shuffled)
+        folds = np.array_split(subjects_shuffled, n_folds)
+        sel = list(folds[fold_index % len(folds)])
+        test_files = [f for f in file_index if f['subject'] in sel]
+        train_files = [f for f in file_index if f['subject'] not in sel]
+        return train_files, test_files
+
+    # activity_kfold: split activities into k groups
+    if split_strategy == 'activity_kfold':
+        activities = sorted(list({f['activity'] for f in file_index}))
+        rng = np.random.RandomState(random_state)
+        activities_shuffled = activities.copy()
+        rng.shuffle(activities_shuffled)
+        folds = np.array_split(activities_shuffled, n_folds)
+        sel = list(folds[fold_index % len(folds)])
+        test_files = [f for f in file_index if f['activity'] in sel]
+        train_files = [f for f in file_index if f['activity'] not in sel]
+        return train_files, test_files
+
+    raise ValueError(f"Unknown split_strategy: {split_strategy}")
 
 def _compute_wavelet_scalogram(channel_data, fs=1000, output_fs=100, freq_min=5, freq_max=450, n_scales=40):
     """
@@ -251,7 +311,7 @@ def _combine_emg_angle_data(emg_data_dict, angle_df, output_fs=100):
     }
 
 
-def _get_cache_path(mode: str, n_scales: int, cache_dir: str = None) -> Path:
+def _get_cache_path(mode: str, n_scales: int, cache_dir: str = None, split_tag: str = None) -> Path:
     """
     Get the cache file path for the given mode.
     
@@ -265,7 +325,9 @@ def _get_cache_path(mode: str, n_scales: int, cache_dir: str = None) -> Path:
     """
     cache_path = Path(cache_dir if cache_dir is not None else CACHE_DIR)
     cache_path.mkdir(parents=True, exist_ok=True)
-    return cache_path / f"processed_data_{mode}_{n_scales}.pkl"
+    # include a short split tag to make caches fold/strategy-aware
+    tag = f"_{split_tag}" if split_tag else ""
+    return cache_path / f"processed_data_{mode}_{n_scales}{tag}.pkl"
 
 def _save_to_cache(cache_path: Path, combined_data: list, channel_names: list, angle_names: list, frequencies: np.ndarray, output_fs: int):
     """
@@ -337,7 +399,9 @@ def _load_from_cache(cache_path: Path):
 
 
 def load_and_process_data(mode='train', use_cache=True, cache_dir=None, output_fs=100, 
-                          freq_min=20, freq_max=450, n_scales=40):
+                          freq_min=20, freq_max=450, n_scales=40,
+                          split_strategy='single_holdout', n_folds=5, fold_index=0,
+                          test_subjects=None, test_activities=None, split_random_state=42):
     """
     Load and process the EMG and angle data using wavelet transforms.
     Uses caching to avoid reprocessing on subsequent runs.
@@ -359,11 +423,28 @@ def load_and_process_data(mode='train', use_cache=True, cache_dir=None, output_f
             - frequencies (np.ndarray): Array of frequency values
             - output_fs (int): Output sampling frequency used
     """
-    data_files = TRAIN_FILES if mode == 'train' else TEST_FILES
+    # Resolve train/test files according to split configuration
+    train_files, test_files = resolve_split_files(
+        DATA_FILES,
+        split_strategy=split_strategy,
+        n_folds=n_folds,
+        fold_index=fold_index,
+        test_subjects=test_subjects,
+        test_activities=test_activities,
+        random_state=split_random_state
+    )
+
+    data_files = train_files if mode == 'train' else test_files
     
     # Try to load from cache
     if use_cache:
-        cache_path = _get_cache_path(mode, n_scales, cache_dir)
+        # Build a short split tag for cache filenames
+        if split_strategy in ('single_holdout',) and not (test_subjects or test_activities):
+            split_tag = 'single_holdout'
+        else:
+            split_tag = f"{split_strategy}_f{fold_index}"
+
+        cache_path = _get_cache_path(mode, n_scales, cache_dir, split_tag=split_tag)
         
         if cache_path.exists():
             logger.info(f"Loading processed data from cache: {cache_path.name}")
@@ -409,7 +490,7 @@ def load_and_process_data(mode='train', use_cache=True, cache_dir=None, output_f
     
     # Save to cache
     if use_cache:
-        cache_path = _get_cache_path(mode, n_scales, cache_dir)  # Include n_scales in cache path
+        cache_path = _get_cache_path(mode, n_scales, cache_dir, split_tag=split_tag)
         _save_to_cache(cache_path, combined_data, channel_names, angle_names, frequencies, output_fs)
 
     return combined_data, channel_names, angle_names, frequencies, output_fs

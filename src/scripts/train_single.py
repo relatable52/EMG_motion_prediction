@@ -106,12 +106,63 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(config.seed)
     
-    # Create dataset and dataloader
-    train_dataset = PredictionDataset(mode='train', prediction_horizon=config.data.prediction_horizon, output_fs=config.data.output_fs)
-    train_loader = DataLoader(train_dataset, batch_size=config.train.batch_size, shuffle=True)
+    # Create dataset and dataloader with optimized settings for GPU performance
+    train_dataset = PredictionDataset(
+        mode='train',
+        window_length=config.data.window_length,
+        stride=config.data.stride,
+        prediction_horizon=config.data.prediction_horizon,
+        target_angle_name=config.data.target_angle_name,
+        use_cache=config.data.use_cache,
+        cache_dir=config.env.cache_dir,
+        output_fs=config.data.output_fs,
+        freq_min=config.data.freq_min,
+        freq_max=config.data.freq_max,
+        n_scales=config.data.n_scales,
+        split_strategy=config.data.split_strategy,
+        n_folds=config.data.n_folds,
+        fold_index=config.data.fold_index,
+        test_subjects=config.data.test_subjects,
+        test_activities=config.data.test_activities,
+        split_random_state=config.data.split_random_state
+    )
+    train_loader = DataLoader(
+        train_dataset, 
+        batch_size=config.train.batch_size, 
+        shuffle=True,
+        num_workers=8,              # Parallelize data loading across CPU cores
+        pin_memory=True,            # Keep data in pinned memory for faster GPU transfer
+        persistent_workers=True,    # Avoid worker restart overhead
+        prefetch_factor=2           # Pre-load batches ahead of time
+    )
     
-    test_dataset = PredictionDataset(mode='test', prediction_horizon=config.data.prediction_horizon, output_fs=config.data.output_fs)
-    test_loader = DataLoader(test_dataset, batch_size=config.train.batch_size, shuffle=False)
+    test_dataset = PredictionDataset(
+        mode='test',
+        window_length=config.data.window_length,
+        stride=config.data.stride,
+        prediction_horizon=config.data.prediction_horizon,
+        target_angle_name=config.data.target_angle_name,
+        use_cache=config.data.use_cache,
+        cache_dir=config.env.cache_dir,
+        output_fs=config.data.output_fs,
+        freq_min=config.data.freq_min,
+        freq_max=config.data.freq_max,
+        n_scales=config.data.n_scales,
+        split_strategy=config.data.split_strategy,
+        n_folds=config.data.n_folds,
+        fold_index=config.data.fold_index,
+        test_subjects=config.data.test_subjects,
+        test_activities=config.data.test_activities,
+        split_random_state=config.data.split_random_state
+    )
+    test_loader = DataLoader(
+        test_dataset, 
+        batch_size=config.train.batch_size, 
+        shuffle=False,
+        num_workers=4,              # Lower for inference
+        pin_memory=True,
+        persistent_workers=True
+    )
     
     # Experiment save directory
     save_dir = os.path.join(config.env.results_dir, config.exp_name)

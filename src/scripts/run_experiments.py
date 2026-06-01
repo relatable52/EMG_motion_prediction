@@ -104,6 +104,52 @@ def run_data_ablations():
         run_experiment(f"ablation_data_scales_{scales}", kwargs)
 
 
+def run_subject_loso_suite():
+    """Run leave-one-subject-out experiments by iterating fold_index across subjects."""
+    logger.info("\n--- Running Subject LOSO Suite ---")
+    # We don't import subjects here to avoid circular imports; iterate over plausible subject indices
+    # The dataset contains AB01..AB13, so iterate 0..12
+    for fold in range(13):
+        run_experiment(
+            exp_name=f"subject_loso_fold{fold}",
+            kwargs={
+                "data-split-strategy": "subject_loso",
+                "data-fold-index": fold,
+                "train-epochs": 30,
+            }
+        )
+
+
+def run_activity_kfold_suite(n_folds=5):
+    """Run activity k-fold experiments by iterating over fold indices."""
+    logger.info("\n--- Running Activity KFold Suite ---")
+    for fold in range(n_folds):
+        run_experiment(
+            exp_name=f"activity_kfold_f{fold}",
+            kwargs={
+                "data-split-strategy": "activity_kfold",
+                "data-n-folds": n_folds,
+                "data-fold-index": fold,
+                "train-epochs": 30,
+            }
+        )
+
+
+def run_subject_kfold_suite(n_folds=5):
+    """Run subject k-fold experiments by partitioning subjects into k folds and running each fold."""
+    logger.info("\n--- Running Subject KFold Suite ---")
+    for fold in range(n_folds):
+        run_experiment(
+            exp_name=f"subject_kfold_f{fold}",
+            kwargs={
+                "data-split-strategy": "subject_kfold",
+                "data-n-folds": n_folds,
+                "data-fold-index": fold,
+                "train-epochs": 30,
+            }
+        )
+
+
 if __name__ == "__main__":
     logger.info("Starting Automated Experiment Pipeline...")
     

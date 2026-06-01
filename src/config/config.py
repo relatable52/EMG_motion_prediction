@@ -24,10 +24,17 @@ class DataConfig:
     # Use default_factory for mutable types like lists
     target_angle_name: List[str] = field(default_factory=lambda: ['knee_angle_r', 'knee_angle_l'])
     use_cache: bool = True
-    output_fs: int = 100
+    output_fs: int = 200
     freq_min: float = 5.0
     freq_max: float = 450.0
     n_scales: int = 40
+    # Split configuration: supports subject/grouped splits and activity splits
+    split_strategy: str = 'single_holdout'  # choices: single_holdout, subject_loso, subject_kfold, activity_kfold
+    n_folds: int = 5
+    fold_index: int = 0
+    test_subjects: List[str] = field(default_factory=list)
+    test_activities: List[str] = field(default_factory=list)
+    split_random_state: int = 42
 
 @dataclass
 class ModelConfig:

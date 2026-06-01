@@ -18,7 +18,10 @@ class PredictionDataset(Dataset):
     def __init__(self, mode='train', window_length: float=1.0, stride: float=0.1, 
                  prediction_horizon: float=0.2, target_angle_name: list=['knee_angle_r', 'knee_angle_l'],
                  use_cache: bool=True, cache_dir: str=None, 
-                 output_fs: int=100, freq_min: float=5, freq_max: float=450, n_scales: int=40):
+                 output_fs: int=100, freq_min: float=5, freq_max: float=450, n_scales: int=40,
+                 # split control forwarded to data.utils.load_and_process_data
+                 split_strategy: str = 'single_holdout', n_folds: int = 5, fold_index: int = 0,
+                 test_subjects: list = None, test_activities: list = None, split_random_state: int = 42):
         """
         Initialize the PredictionDataset.
         Args:
@@ -44,7 +47,9 @@ class PredictionDataset(Dataset):
         (self.combined_data, self.channel_names, self.angle_names, 
          self.frequencies, self.output_fs) = load_and_process_data(
             mode=mode, use_cache=use_cache, cache_dir=cache_dir,
-            output_fs=output_fs, freq_min=freq_min, freq_max=freq_max, n_scales=n_scales
+            output_fs=output_fs, freq_min=freq_min, freq_max=freq_max, n_scales=n_scales,
+            split_strategy=split_strategy, n_folds=n_folds, fold_index=fold_index,
+            test_subjects=test_subjects, test_activities=test_activities, split_random_state=split_random_state
         )
         
         self.emg_samples, self.angle_samples, self.labels = self._generate_samples()
