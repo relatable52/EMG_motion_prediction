@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 import pandas as pd
 import numpy as np
 import pywt
-from scipy.signal import butter, filtfilt, decimate
+from scipy.signal import butter, sosfiltfilt, decimate
 from sklearn.model_selection import train_test_split
 from tqdm.auto import tqdm
 
@@ -44,10 +44,9 @@ ACTIVITIES = [
     'stairs_1_7_up',
     'stairs_1_8_down',
     'stairs_1_9_up',
-    'stairs_1_10_down',
-    'tire_run_1'
+    'stairs_1_10_down'
 ]
-SUBJECTS = [f'AB{i:02}' for i in range(1, 14)]
+SUBJECTS = [f'AB{i:02}' for i in range(1, 14) if i != 4]  # AB01..AB13 except AB04 which is missing
 
 def _get_data_files() -> dict:
     """
@@ -222,42 +221,47 @@ def _process_emg_file(emg_file, output_fs=100, freq_min=5, freq_max=450, n_scale
     nyquist_freq = fs_emg / 2
     low_cutoff = freq_min / nyquist_freq
     high_cutoff = min(freq_max, nyquist_freq * 0.99) / nyquist_freq  # Ensure below Nyquist
-    b, a = butter(4, [low_cutoff, high_cutoff], btype='band')
+    sos = butter(4, [low_cutoff, high_cutoff], btype='band', output='sos')
 
-    # Apply the filter and compute scalograms for each channel
+    # Filter all channels in one pass, then downsample once before the per-channel CWT.
+    filtered_emg = sosfiltfilt(sos, emg_data, axis=1)
+
+    # Normalize channel-wise to stabilize the CWT input scale.
+    channel_means = np.mean(filtered_emg, axis=1, keepdims=True)
+    channel_stds = np.std(filtered_emg, axis=1, keepdims=True)
+    channel_stds = np.where(channel_stds == 0, 1.0, channel_stds)
+    filtered_emg = (filtered_emg - channel_means) / channel_stds
+
+    # Clip outliers per channel before the wavelet transform.
+    clip_bounds = np.percentile(np.abs(filtered_emg), 95, axis=1, keepdims=True)
+    filtered_emg = np.clip(filtered_emg, -clip_bounds, clip_bounds)
+
+    # Downsample the filtered EMG once before CWT to reduce the expensive time-frequency transform cost.
+    decimation_factor = int(fs_emg / output_fs)
+    if decimation_factor > 1:
+        filtered_emg = decimate(filtered_emg, decimation_factor, axis=1, zero_phase=True)
+        time_stamps = time_stamps[::decimation_factor][:filtered_emg.shape[1]]
+
+    # Apply CWT channel-by-channel on the shorter signal.
     scalograms = []
     freqs = None
-    
-    for i in range(n_channels):
-        # Filter the signal
-        filtered_signal = filtfilt(b, a, emg_data[i])
-        
-        # Normalize the filtered signal
-        filtered_signal = (filtered_signal - np.mean(filtered_signal)) / np.std(filtered_signal)
-        
-        # Remove outliers (95th percentile)
-        filtered_signal = np.clip(filtered_signal, 
-                                  -np.percentile(np.abs(filtered_signal), 95), 
-                                  np.percentile(np.abs(filtered_signal), 95))
-        
-        # Compute wavelet scalogram
+    for i in range(filtered_emg.shape[0]):
         scalogram, freqs = _compute_wavelet_scalogram(
-            filtered_signal, 
-            fs=fs_emg, 
+            filtered_emg[i],
+            fs=output_fs,
             output_fs=output_fs,
             freq_min=freq_min,
             freq_max=freq_max,
             n_scales=n_scales
         )
-        
+
         scalograms.append(scalogram)
     
     # Stack into 3D array (n_channels, time, n_scales)
     emg_scalogram = np.stack(scalograms, axis=0)
     
-    # Generate downsampled time stamps
-    decimation_factor = int(fs_emg / output_fs)
-    downsampled_time = time_stamps[::decimation_factor][:emg_scalogram.shape[1]]
+    # Generate downsampled time stamps (already aligned to the reduced signal length).
+    downsampled_time = time_stamps[:emg_scalogram.shape[1]]
     
     return {
         'emg_scalogram': emg_scalogram,
