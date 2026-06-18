@@ -26,16 +26,22 @@ def run_experiment(exp_name, kwargs):
         cmd.extend([f"--{key}", str(value)])
         
     # 2. Run the subprocess synchronously from the SRC_DIR, directly to terminal
+    # Capture output so we can log errors when experiments fail
     result = subprocess.run(
-        cmd, 
-        cwd=SRC_DIR  # This forces the command to run from the 'src' folder
+        cmd,
+        cwd=SRC_DIR,  # This forces the command to run from the 'src' folder
+        capture_output=True,
+        text=True,
     )
-        
+
     if result.returncode != 0:
-        logger.error(f"EXPERIMENT FAILED: {exp_name}")
+        logger.error(f"EXPERIMENT FAILED: {exp_name}; returncode={result.returncode}")
+        logger.error(f"Command: {' '.join(cmd)}")
+        logger.error("Stdout:\n%s", result.stdout)
+        logger.error("Stderr:\n%s", result.stderr)
     else:
         logger.info(f"Finished {exp_name} successfully.")
-        
+
     return result.returncode
 
 def run_core_rq_suite():

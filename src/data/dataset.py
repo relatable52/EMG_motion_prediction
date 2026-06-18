@@ -43,16 +43,34 @@ class PredictionDataset(Dataset):
         self.target_angle_name = target_angle_name
         self.output_fs = output_fs
         
-        # Load wavelet-transformed data
-        (self.combined_data, self.channel_names, self.angle_names, 
+        # Load wavelet-transformed data (keeps per-file processed arrays in memory)
+        (self.combined_data, self.channel_names, self.angle_names,
          self.frequencies, self.output_fs) = load_and_process_data(
             mode=mode, use_cache=use_cache, cache_dir=cache_dir,
             output_fs=output_fs, freq_min=freq_min, freq_max=freq_max, n_scales=n_scales,
             split_strategy=split_strategy, n_folds=n_folds, fold_index=fold_index,
             test_subjects=test_subjects, test_activities=test_activities, split_random_state=split_random_state
         )
-        
-        self.emg_samples, self.angle_samples, self.labels = self._generate_samples()
+
+        # Build lazy index: a list of (file_idx, window_start_index) to avoid materializing all windows
+        self.index = []  # list of tuples (file_idx, start_idx)
+        self._window_samples = int(self.window_length * self.output_fs)
+        self._stride_samples = int(self.stride * self.output_fs)
+        self._prediction_samples = int(self.prediction_horizon * self.output_fs)
+
+        # Precompute target indices
+        self.target_indices = [self.angle_names.index(name) for name in self.target_angle_name
+                               if name in self.angle_names]
+
+        for fidx, data_dict in enumerate(self.combined_data):
+            emg_scalogram = data_dict['emg_scalogram']  # (n_channels, time, n_scales)
+            n_time = emg_scalogram.shape[1]
+            max_start = n_time - self._window_samples - self._prediction_samples + 1
+            if max_start <= 0:
+                continue
+            starts = list(range(0, max_start, self._stride_samples))
+            for s in starts:
+                self.index.append((fidx, s))
 
     def _generate_samples(self):
         """
@@ -60,47 +78,11 @@ class PredictionDataset(Dataset):
         Each sample consists of EMG scalogram windows and angle history, 
         with the label being the angle at time t + prediction_horizon.
         """
-        emg_samples = []
-        angle_samples = []
-        labels = []
-        
-        # Calculate window and stride sizes in samples (at output_fs rate)
-        window_samples = int(self.window_length * self.output_fs)
-        stride_samples = int(self.stride * self.output_fs)
-        prediction_samples = int(self.prediction_horizon * self.output_fs)
-        
-        for data_dict in self.combined_data:
-            emg_scalogram = data_dict['emg_scalogram']  # Shape: (n_channels, time, n_scales)
-            angle_data = data_dict['angle_data']  # Shape: (n_angles, time)
-            
-            n_channels, n_time, n_scales = emg_scalogram.shape
-            n_angles = angle_data.shape[0]
-            
-            # Find indices for target angles
-            target_indices = [self.angle_names.index(name) for name in self.target_angle_name 
-                            if name in self.angle_names]
-            
-            # Generate windowed samples
-            for i in range(0, n_time - window_samples - prediction_samples + 1, stride_samples):
-                # Extract EMG scalogram window: (n_channels, window_samples, n_scales)
-                emg_window = emg_scalogram[:, i:i + window_samples, :].astype(np.float32)
-                
-                # Extract angle history window: (n_angles, window_samples)
-                angle_window = angle_data[:, i:i + window_samples].astype(np.float32)
-                
-                # Extract target angle at future time point
-                future_idx = i + window_samples + prediction_samples - 1
-                if future_idx < n_time:
-                    label = angle_data[target_indices, future_idx].astype(np.float32)
-                    
-                    emg_samples.append(emg_window)
-                    angle_samples.append(angle_window)
-                    labels.append(label)
-        
-        return emg_samples, angle_samples, labels
+        # Deprecated: eager sample generation removed — dataset is now lazy via self.index
+        return None
 
     def __len__(self):
-        return len(self.labels)
+        return len(self.index)
 
     def __getitem__(self, idx):
         """
@@ -109,7 +91,20 @@ class PredictionDataset(Dataset):
             angle_sample: (n_angles, window_samples) - Angle history
             label: (n_target_angles,) - Future angle values
         """
-        return self.emg_samples[idx], self.angle_samples[idx], self.labels[idx]
+        # Retrieve sample by file and start index
+        fidx, start = self.index[idx]
+        data_dict = self.combined_data[fidx]
+        emg_scalogram = data_dict['emg_scalogram']  # (n_channels, time, n_scales)
+        angle_data = data_dict['angle_data']  # (n_angles, time)
+
+        end = start + self._window_samples
+        emg_window = emg_scalogram[:, start:end, :].astype(np.float32)
+        angle_window = angle_data[:, start:end].astype(np.float32)
+
+        future_idx = end + self._prediction_samples - 1
+        label = angle_data[self.target_indices, future_idx].astype(np.float32)
+
+        return emg_window, angle_window, label
     
 # Test the dataset and visualize wavelet scalogram
 if __name__ == "__main__":
